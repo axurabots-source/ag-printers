@@ -547,6 +547,9 @@ class NewJobPage(QWidget):
             self._placeholder_guide.setVisible(False)
             self._bill_container.setVisible(True)
 
+            if hasattr(self, "_costing_drawer") and self._costing_drawer:
+                self._costing_drawer.refresh_inventory()
+
             if self._table.rowCount() == 0:
                 self.add_row(focus_desc=False)
 
@@ -1102,6 +1105,7 @@ class NewJobPage(QWidget):
             self._committed_inventory_materials.clear()
             if hasattr(self, "_costing_drawer") and self._costing_drawer:
                 self._costing_drawer.clear_inventory_materials()
+                self._costing_drawer.refresh_inventory()
         except Exception as inv_err:
             print(f"Warning: barcode inventory deduction encountered error: {inv_err}")
 
@@ -1156,3 +1160,5 @@ class NewJobPage(QWidget):
     def reset_to_list(self) -> None:
         """Called by MainWindow when switching to this tab."""
         self.load_parties()
+        if hasattr(self, "_costing_drawer") and self._costing_drawer:
+            self._costing_drawer.refresh_inventory()

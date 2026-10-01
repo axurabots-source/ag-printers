@@ -482,6 +482,8 @@ class JobCostingDrawer(QFrame):
                 background-color: #F1F5F9;
             }}
         """)
+        if self.is_expanded:
+            self.refresh_inventory()
 
     def _on_barcode_qty_changed(self, qty: float) -> None:
         if qty > 0:
@@ -571,11 +573,18 @@ class JobCostingDrawer(QFrame):
             return sec.barcode_inventory_picker.get_selected_materials()
         return []
 
+    def refresh_inventory(self) -> None:
+        """Reload inventory stock counts in the barcode inventory picker."""
+        sec = self._sections.get("barcode")
+        if sec and hasattr(sec, "barcode_inventory_picker") and sec.barcode_inventory_picker:
+            sec.barcode_inventory_picker.refresh_inventory()
+
     def clear_inventory_materials(self) -> None:
-        """Clear materials after successful save."""
+        """Clear materials after successful save and reload fresh inventory stock."""
         sec = self._sections.get("barcode")
         if sec and hasattr(sec, "barcode_inventory_picker") and sec.barcode_inventory_picker:
             sec.barcode_inventory_picker.clear()
+            sec.barcode_inventory_picker.refresh_inventory()
 
     def get_total_cost(self) -> float:
         return sum(sec.update_subtotal() for sec in self._sections.values())
@@ -663,8 +672,9 @@ class JobCostingDrawer(QFrame):
         self.values_changed.emit()
 
     def clear(self) -> None:
-        """Reset costing inputs to clean state."""
+        """Reset costing inputs to clean state and refresh stock."""
         for sec in self._sections.values():
             sec.clear()
         self.sell_price_input.clear()
+        self.refresh_inventory()
         self._recalculate()

@@ -346,7 +346,14 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._input_qty.blockSignals(False)
 
     def refresh_inventory(self) -> None:
-        """Reload available items from barcode_inventory table."""
+        """Reload available items from barcode_inventory table with updated stock counts."""
+        current_id = None
+        idx = self._combo.currentIndex()
+        if idx >= 0:
+            cur_item = self._combo.itemData(idx)
+            if isinstance(cur_item, BarcodeInventoryItem):
+                current_id = cur_item.id
+
         self._inventory_items = list_barcode_inventory(self._connection)
         self._combo.blockSignals(True)
         self._combo.clear()
@@ -357,11 +364,17 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._add_btn.setEnabled(False)
         else:
             self._add_btn.setEnabled(True)
-            for it in self._inventory_items:
+            matched_idx = 0
+            for i, it in enumerate(self._inventory_items):
                 label = f"{it.detail}  ·  Rs. {it.rate:,.2f}  ·  Stock: {it.quantity:,.0f}"
                 self._combo.addItem(label, it)
-            # Set rate from first item
-            self._input_rate.setValue(self._inventory_items[0].rate)
+                if current_id is not None and it.id == current_id:
+                    matched_idx = i
+
+            self._combo.setCurrentIndex(matched_idx)
+            selected_it = self._combo.itemData(matched_idx)
+            if isinstance(selected_it, BarcodeInventoryItem):
+                self._input_rate.setValue(selected_it.rate)
 
         self._combo.blockSignals(False)
 
@@ -473,11 +486,12 @@ class BarcodeInventoryCostingWidget(QFrame):
         return []
 
     def clear(self) -> None:
-        """Clear all selected materials."""
+        """Clear all selected materials and reload inventory stock."""
         self._rows.clear()
         self._rebuild_table()
         self._input_qty.blockSignals(True)
         self._input_qty.setValue(1.0)
         self._input_qty.blockSignals(False)
+        self.refresh_inventory()
         self._on_row_changed()
 
