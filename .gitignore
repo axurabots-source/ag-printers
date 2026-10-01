@@ -28,3 +28,7 @@ Thumbs.db
 scratch_*.png
 test_*.png
 backups/
+
+# PyInstaller build outputs
+build/
+dist/
