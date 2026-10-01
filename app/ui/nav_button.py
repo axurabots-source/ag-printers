@@ -10,7 +10,7 @@ fading them in and out with a short ``QPropertyAnimation`` running on its own
 from __future__ import annotations
 
 from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRect, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QPushButton, QSizePolicy
 
 from app.ui import icons

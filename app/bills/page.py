@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox, QStackedWidget, QVBoxLayout, QWidget

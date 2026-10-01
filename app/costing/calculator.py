@@ -25,7 +25,6 @@ from PySide6.QtGui import (
     QColor,
     QCursor,
     QDoubleValidator,
-    QFont,
     QIntValidator,
     QPainter,
     QPainterPath,

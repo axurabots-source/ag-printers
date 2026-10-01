@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCalendarWidget
 
 from app.ui.theme import CALENDAR_SVG, CHEVRON_DOWN_SVG

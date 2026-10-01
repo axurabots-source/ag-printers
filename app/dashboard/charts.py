@@ -9,7 +9,6 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QPainter,
-    QPainterPath,
     QPen,
 )
 from PySide6.QtWidgets import (

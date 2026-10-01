@@ -7,7 +7,6 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
 
 from PySide6.QtCore import QThread, Signal
 

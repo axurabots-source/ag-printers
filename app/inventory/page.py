@@ -7,10 +7,8 @@ specifying Detail, Stock Quantity, and Unit Rate, used exclusively in Barcode Co
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -19,10 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
-    QSizePolicy,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -34,7 +29,6 @@ from app.db.barcode_inventory import (
     list_barcode_inventory,
 )
 from app.inventory.dialog import BarcodeItemDialog
-from app.ui.theme import CHECK_SVG, EYE_SVG, REFRESH_SVG, TRASH_SVG
 
 
 class InventoryPage(QWidget):

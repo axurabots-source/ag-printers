@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -21,7 +20,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -45,9 +43,8 @@ from app.settings.config import (
     set_backup_dir,
     set_retention_count,
 )
-from app.updater import UpdateCheckerThread, UpdateDialog, UpdateInfo
-
-from app.ui import icons
+from app.updater.checker import UpdateCheckerThread, UpdateInfo
+from app.updater.dialog import UpdateDialog
 
 
 class ClearDataConfirmDialog(QDialog):

@@ -12,14 +12,11 @@ Features:
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
-
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QCursor,
     QDoubleValidator,
-    QFont,
     QIntValidator,
     QPainter,
     QPainterPath,
@@ -41,17 +38,12 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.costing import (
-    ALL_LINES,
-    COSTING_SECTIONS,
-    Costing,
     CostingLine,
-    calculate,
     get_costing,
     load_party_rates,
     save_costing,
-    save_party_rates,
 )
-from app.ui.capitalized_input import capitalize_words, enable_auto_capitalization
+from app.ui.capitalized_input import enable_auto_capitalization
 
 
 def _fmt(val: float) -> str:

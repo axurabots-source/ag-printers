@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.db.bills import Bill, delete_bill, get_bill, list_bills
+from app.db.bills import Bill, list_bills
 from app.jobs.pdf_generator import get_or_create_bill_pdf
 from app.pdf_settings import open_pdf_file
 from app.ui.calendar import (

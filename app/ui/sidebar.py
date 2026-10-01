@@ -9,8 +9,6 @@ the newly selected one. All 11 module placeholders and the
 
 from __future__ import annotations
 
-import os
-
 from PySide6.QtCore import (
     QEasingCurve,
     QPoint,
@@ -21,7 +19,6 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,

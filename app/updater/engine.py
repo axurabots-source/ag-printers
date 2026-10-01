@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -16,7 +15,6 @@ from typing import Callable
 from PySide6.QtWidgets import QApplication
 
 from app.paths import PROJECT_ROOT
-from app.settings.backup_service import create_backup
 from app.updater.checker import UpdateInfo
 
 
@@ -32,6 +30,8 @@ def apply_update(
         update_info: Update details containing version and download URL.
         progress_callback: Optional callable(status_text: str, percentage: int).
     """
+    from app.settings.backup_service import create_backup
+
     def _notify(text: str, pct: int):
         if progress_callback:
             progress_callback(text, pct)

@@ -5,8 +5,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -14,10 +13,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
-    QWidget,
 )
 
 from app import __version__

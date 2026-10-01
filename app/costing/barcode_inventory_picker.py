@@ -8,12 +8,10 @@ Used exclusively in Barcode Costing. Designed with compact responsive layout.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -22,7 +20,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTableWidget,
     QVBoxLayout,
-    QWidget,
 )
 
 from app.db.barcode_inventory import BarcodeInventoryItem, list_barcode_inventory
