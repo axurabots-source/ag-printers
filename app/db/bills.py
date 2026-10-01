@@ -78,6 +78,7 @@ class GatePass:
     party_name: str = ""
     po_number: str = ""
     job_number: str = ""
+    customer_po: str = ""
     item_count: int = 0
     total_quantity: float = 0.0
 
@@ -98,6 +99,7 @@ class Bill:
     party_name: str = ""
     po_number: str = ""
     job_number: str = ""
+    customer_po: str = ""
     production_cost: float = 0.0
     profit: float = 0.0
     items: list[BillItem] = field(default_factory=list)
@@ -174,6 +176,7 @@ def create_bill(
     party_id: int | None = None,
     po_number: str = "",
     job_number: str = "",
+    customer_po: str = "",
     bill_number: str = "",
     gate_pass_number: str = "",
     bill_date: str,
@@ -300,8 +303,8 @@ def create_bill(
         cursor = connection.execute(
             """
             INSERT INTO bills
-                (bill_number, bill_date, party_id, po_id, po_number, job_number, total_amount, production_cost, profit, notes, pdf_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (bill_number, bill_date, party_id, po_id, po_number, job_number, customer_po, total_amount, production_cost, profit, notes, pdf_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 number,
@@ -310,6 +313,7 @@ def create_bill(
                 po_id,
                 str(po_number).strip(),
                 str(job_number).strip(),
+                str(customer_po).strip(),
                 total,
                 float(production_cost or 0.0),
                 float(profit or 0.0),
@@ -327,9 +331,9 @@ def create_bill(
             ],
         )
         connection.execute(
-            "INSERT INTO gate_passes (gate_pass_number, gate_pass_date, bill_id)"
-            " VALUES (?, ?, ?)",
-            (challan_num, str(gate_pass_date).strip() or date, bill_id),
+            "INSERT INTO gate_passes (gate_pass_number, gate_pass_date, bill_id, customer_po)"
+            " VALUES (?, ?, ?, ?)",
+            (challan_num, str(gate_pass_date).strip() or date, bill_id, str(customer_po).strip()),
         )
         connection.commit()
     except Exception:
@@ -352,6 +356,7 @@ def update_bill_pdf_path(connection: sqlite3.Connection, bill_id: int, pdf_path:
 _BILL_SELECT = """
     SELECT b.id, b.bill_number, b.bill_date, b.party_id, b.po_id,
            COALESCE(b.job_number, '') AS job_number,
+           COALESCE(b.customer_po, '') AS customer_po,
            b.total_amount,
            COALESCE(b.production_cost, 0) AS production_cost,
            COALESCE(b.profit, 0) AS profit,
@@ -373,6 +378,7 @@ _GATE_PASS_SELECT = """
            g.created_at, g.updated_at,
            b.bill_number, p.name AS party_name,
            COALESCE(b.job_number, '') AS job_number,
+           COALESCE(g.customer_po, b.customer_po, '') AS customer_po,
            COALESCE(NULLIF(b.po_number, ''), po.po_number, '') AS po_number,
            (SELECT COUNT(*) FROM bill_items WHERE bill_id = b.id) AS item_count,
            (SELECT COALESCE(SUM(quantity), 0) FROM bill_items WHERE bill_id = b.id)
@@ -401,6 +407,7 @@ def _bill_from_row(row: sqlite3.Row) -> Bill:
         party_name=row["party_name"],
         po_number=row["po_number"] or "",
         job_number=row["job_number"] if "job_number" in keys else "",
+        customer_po=row["customer_po"] if "customer_po" in keys else "",
         items_count=int(row["item_count"]),
         gate_pass_number_value=(row["gate_pass_number"] or ""),
         pdf_path=row["pdf_path"] if "pdf_path" in keys else "",
@@ -421,6 +428,7 @@ def _gate_pass_from_row(row: sqlite3.Row) -> GatePass:
         party_name=row["party_name"],
         po_number=row["po_number"] or "",
         job_number=row["job_number"] if "job_number" in keys else "",
+        customer_po=row["customer_po"] if "customer_po" in keys else "",
         item_count=int(row["item_count"]) if "item_count" in keys else 0,
         total_quantity=(
             float(row["total_quantity"]) if "total_quantity" in keys else 0.0

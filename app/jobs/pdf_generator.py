@@ -10,12 +10,12 @@ from PySide6.QtCore import QRectF
 from PySide6.QtGui import QPageLayout, QPainter
 from PySide6.QtPrintSupport import QPrinter
 
-from app.jobs.a4_view import paint_pad
+from app.jobs.a4_view import get_document_page_count, paint_pad
 from app.pdf_settings import build_pdf_filename, get_pdf_export_dir
 
 
 def export_bill_pdf(data: dict[str, Any], output_path: str | Path | None = None) -> Path:
-    """Render and save a complete 2-page PDF (BILL + DELIVERY CHALLAN) to local machine."""
+    """Render and save complete multi-page PDF (INVOICE + GATE PASS) to local machine."""
     if output_path is None:
         target_dir = get_pdf_export_dir()
         filename = build_pdf_filename(
@@ -36,9 +36,21 @@ def export_bill_pdf(data: dict[str, Any], output_path: str | Path | None = None)
 
     painter = QPainter(printer)
     page_rect = printer.pageLayout().paintRectPixels(printer.resolution())
-    paint_pad(painter, "BILL", data, QRectF(page_rect))
-    printer.newPage()
-    paint_pad(painter, "CHALLAN", data, QRectF(page_rect))
+
+    doc_pages = get_document_page_count(data)
+    first = True
+    # INVOICE pages
+    for p in range(1, doc_pages + 1):
+        if not first:
+            printer.newPage()
+        first = False
+        paint_pad(painter, "BILL", data, QRectF(page_rect), page_number=p, total_pages=doc_pages)
+
+    # GATE PASS pages
+    for p in range(1, doc_pages + 1):
+        printer.newPage()
+        paint_pad(painter, "CHALLAN", data, QRectF(page_rect), page_number=p, total_pages=doc_pages)
+
     painter.end()
 
     return out_file
@@ -88,6 +100,7 @@ def get_or_create_bill_pdf(connection: sqlite3.Connection, bill_id: int) -> Path
         "bill_date": bill.bill_date,
         "po_number": bill.po_number,
         "job_number": bill.job_number,
+        "customer_po": getattr(bill, "customer_po", "") or "",
         "bill_number": bill.bill_number,
         "gate_pass_number": bill.gate_pass_number,
         "items": items_data,

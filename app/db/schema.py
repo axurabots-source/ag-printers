@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlite3
 
 #: Highest schema version known to this build of the application.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 #: Ordered migrations: version -> SQL script.
 MIGRATIONS: dict[int, str] = {
@@ -280,6 +280,10 @@ MIGRATIONS: dict[int, str] = {
     """,
     14: """
     ALTER TABLE bills ADD COLUMN pdf_path TEXT NOT NULL DEFAULT '';
+    """,
+    15: """
+    ALTER TABLE bills ADD COLUMN customer_po TEXT NOT NULL DEFAULT '';
+    ALTER TABLE gate_passes ADD COLUMN customer_po TEXT NOT NULL DEFAULT '';
     """,
 }
 

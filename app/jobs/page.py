@@ -210,6 +210,10 @@ class NewJobPage(QWidget):
         meta_grid = QHBoxLayout()
         meta_grid.setSpacing(16)
 
+        # Row 1: Date, Invoice #, Gate Pass #
+        row1_grid = QHBoxLayout()
+        row1_grid.setSpacing(14)
+
         # Date
         date_box = QVBoxLayout()
         date_box.setSpacing(4)
@@ -224,9 +228,9 @@ class NewJobPage(QWidget):
         self._date_edit.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         date_box.addWidget(date_lbl)
         date_box.addWidget(self._date_edit)
-        meta_grid.addLayout(date_box, 1)
+        row1_grid.addLayout(date_box, 1)
 
-        # Bill # (Auto suggested, editable)
+        # Invoice # (Auto suggested, editable)
         bill_box = QVBoxLayout()
         bill_box.setSpacing(4)
         bill_lbl = QLabel("Invoice # (Auto)")
@@ -236,7 +240,7 @@ class NewJobPage(QWidget):
         enable_auto_capitalization(self._bill_num_edit)
         bill_box.addWidget(bill_lbl)
         bill_box.addWidget(self._bill_num_edit)
-        meta_grid.addLayout(bill_box)
+        row1_grid.addLayout(bill_box, 1)
 
         # Gate Pass # (Auto suggested, editable)
         dc_box = QVBoxLayout()
@@ -248,7 +252,13 @@ class NewJobPage(QWidget):
         enable_auto_capitalization(self._dc_num_edit)
         dc_box.addWidget(dc_lbl)
         dc_box.addWidget(self._dc_num_edit)
-        meta_grid.addLayout(dc_box)
+        row1_grid.addLayout(dc_box, 1)
+
+        meta_layout.addLayout(row1_grid)
+
+        # Row 2 (Alag row nichy): Reference numbers (P.O. #, Job #, Customer P.O. #)
+        row2_grid = QHBoxLayout()
+        row2_grid.setSpacing(14)
 
         # PO Number (Party PO, direct entry)
         po_box = QVBoxLayout()
@@ -261,7 +271,7 @@ class NewJobPage(QWidget):
         enable_auto_capitalization(self._po_edit)
         po_box.addWidget(po_lbl)
         po_box.addWidget(self._po_edit)
-        meta_grid.addLayout(po_box)
+        row2_grid.addLayout(po_box, 1)
 
         # Job Number (Party Job #, direct entry)
         job_box = QVBoxLayout()
@@ -274,9 +284,22 @@ class NewJobPage(QWidget):
         enable_auto_capitalization(self._job_num_edit)
         job_box.addWidget(job_lbl)
         job_box.addWidget(self._job_num_edit)
-        meta_grid.addLayout(job_box)
+        row2_grid.addLayout(job_box, 1)
 
-        meta_layout.addLayout(meta_grid)
+        # Customer PO Number (Direct entry)
+        cust_po_box = QVBoxLayout()
+        cust_po_box.setSpacing(4)
+        cust_po_lbl = QLabel("Customer P.O. # (Manual)")
+        cust_po_lbl.setObjectName("FieldLabel")
+        self._cust_po_edit = QLineEdit()
+        self._cust_po_edit.setObjectName("FormInput")
+        self._cust_po_edit.setPlaceholderText("e.g. CUST-PO-104")
+        enable_auto_capitalization(self._cust_po_edit)
+        cust_po_box.addWidget(cust_po_lbl)
+        cust_po_box.addWidget(self._cust_po_edit)
+        row2_grid.addLayout(cust_po_box, 1)
+
+        meta_layout.addLayout(row2_grid)
         b_layout.addWidget(meta_card)
 
         # 3b. Items Grid Card (Auto-Expanding Editable Table)
@@ -936,6 +959,7 @@ class NewJobPage(QWidget):
             "bill_date": self._date_edit.date().toString("yyyy-MM-dd"),
             "po_number": capitalize_words(self._po_edit.text().strip()),
             "job_number": capitalize_words(self._job_num_edit.text().strip()),
+            "customer_po": capitalize_words(self._cust_po_edit.text().strip()),
             "bill_number": self._bill_num_edit.text().strip(),
             "gate_pass_number": self._dc_num_edit.text().strip(),
             "items": self._collect_lines(),
@@ -991,6 +1015,7 @@ class NewJobPage(QWidget):
                 party_id=self._selected_party.id,
                 po_number=data["po_number"],
                 job_number=data["job_number"],
+                customer_po=data["customer_po"],
                 bill_number=data["bill_number"],
                 gate_pass_number=data["gate_pass_number"],
                 bill_date=data["bill_date"],
@@ -1032,6 +1057,7 @@ class NewJobPage(QWidget):
             f"Client: {data['party_name']}\n"
             f"Job #: {data['job_number'] or 'None'}\n"
             f"P.O. #: {data['po_number'] or 'None'}\n"
+            f"Customer P.O. #: {data['customer_po'] or 'None'}\n"
             f"{profit_note}"
             f"{pdf_note}\n"
             "Would you like to open the A4 Print Preview now?",
@@ -1050,6 +1076,7 @@ class NewJobPage(QWidget):
         """Reset the form to ready state."""
         self._po_edit.clear()
         self._job_num_edit.clear()
+        self._cust_po_edit.clear()
         self.clear_table()
         if hasattr(self, "_costing_drawer"):
             self._costing_drawer.clear()

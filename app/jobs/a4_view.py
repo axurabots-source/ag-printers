@@ -14,6 +14,7 @@ Design highlights (V0.9):
 
 from __future__ import annotations
 
+import math as _math
 import os as _os
 from typing import Any
 
@@ -29,7 +30,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
-    QButtonGroup,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
 # Standard A4 size in logical points at 96 DPI: 794 x 1123
 A4_WIDTH = 794
 A4_HEIGHT = 1123
+ITEMS_PER_PAGE = 18
 
 from app.ui.capitalized_input import capitalize_words
 
@@ -85,12 +87,25 @@ def _format_pdf_date(val: str | None) -> str:
         return str(val)
 
 
+def get_document_page_count(data: dict[str, Any]) -> int:
+    """Calculate the number of pages required for the items in the document."""
+    items = data.get("items", [])
+    if not items:
+        return 1
+    return max(1, _math.ceil(len(items) / ITEMS_PER_PAGE))
+
+
 # ---------------------------------------------------------------------------
 
 def paint_pad(
-    painter: QPainter, page_kind: str, data: dict[str, Any], target_rect: QRectF
+    painter: QPainter,
+    page_kind: str,
+    data: dict[str, Any],
+    target_rect: QRectF,
+    page_number: int = 1,
+    total_pages: int = 1,
 ) -> None:
-    """Render one A4 page (BILL or DELIVERY CHALLAN) into *target_rect*."""
+    """Render one A4 page (INVOICE or GATE PASS) into *target_rect*."""
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
@@ -170,8 +185,21 @@ def paint_pad(
 
     # ── DOCUMENT TYPE BADGE (transparent pill with black border & black text) ──
     BADGE_Y = HEADER_BOTTOM + 12
-    BADGE_W = 200.0
     BADGE_H = 26.0
+    is_bill = page_kind in ("BILL", "INVOICE")
+    doc_title = "INVOICE" if is_bill else "GATE PASS"
+
+    if total_pages > 1:
+        badge_label = f"{doc_title}  (PAGE {page_number} OF {total_pages})"
+        BADGE_W = 270.0
+        badge_font = QFont("Georgia", 9.5, QFont.Weight.Bold)
+        badge_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+    else:
+        badge_label = doc_title
+        BADGE_W = 200.0
+        badge_font = QFont("Georgia", 11, QFont.Weight.Bold)
+        badge_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
+
     BADGE_X = (A4_WIDTH - BADGE_W) / 2.0
     badge_rect = QRectF(BADGE_X, BADGE_Y, BADGE_W, BADGE_H)
 
@@ -181,12 +209,8 @@ def paint_pad(
     painter.setPen(QPen(QColor("#000000"), 1.2))
     painter.drawPath(badge_path)
 
-    badge_font = QFont("Georgia", 11, QFont.Weight.Bold)
-    badge_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
     painter.setFont(badge_font)
     painter.setPen(QColor("#000000"))
-    is_bill = page_kind in ("BILL", "INVOICE")
-    badge_label = "INVOICE" if is_bill else "GATE PASS"
     painter.drawText(
         badge_rect,
         Qt.AlignmentFlag.AlignCenter,
@@ -209,13 +233,16 @@ def paint_pad(
     raw_job = data.get("job_number") or data.get("job_no") or ""
     job_str = capitalize_words(str(raw_job)) if raw_job else ""
 
+    raw_cust_po = data.get("customer_po") or data.get("cust_po") or ""
+    cust_po_str = capitalize_words(str(raw_cust_po)) if raw_cust_po else ""
+
     raw_bill = data.get("bill_number") or data.get("bill_no") or data.get("bill_ref") or ""
     bill_no_str = str(raw_bill) if raw_bill else "—"
 
     raw_dc = data.get("challan_no") or data.get("challan_number") or data.get("gate_pass_number") or data.get("dc_no") or ""
     dc_no_str = str(raw_dc) if raw_dc else "—"
 
-    LEFT_BOX_W = 380.0
+    LEFT_BOX_W = 405.0
     RIGHT_BOX_X = LM + LEFT_BOX_W + 14.0
     RIGHT_BOX_W = CW - (LEFT_BOX_W + 14.0)
 
@@ -249,46 +276,54 @@ def paint_pad(
         party_str if party_str else "Cash Customer",
     )
 
-    # PO / Job Reference Badges (Clean transparent with black border)
+    # Reference Badges (3 Chips: P.O., Job, Customer P.O.)
     badge_y = INFO_TOP + 52
     badge_h = 24.0
-    badge_w = (LEFT_BOX_W - 28.0 - 10.0) / 2.0
+    chip_gap = 7.0
+    chip_w = (LEFT_BOX_W - 28.0 - (chip_gap * 2.0)) / 3.0
 
     po_display = po_str if (po_str and po_str != "—") else "—"
     job_display = job_str if (job_str and job_str != "—") else "—"
+    cust_po_display = cust_po_str if (cust_po_str and cust_po_str != "—") else "—"
 
-    # P.O. Number Chip
-    po_rect = QRectF(LM + 14, badge_y, badge_w, badge_h)
-    po_path = QPainterPath()
-    po_path.addRoundedRect(po_rect, 4.0, 4.0)
+    # Chip 1: P.O. Number
+    c1_x = LM + 14
+    c1_rect = QRectF(c1_x, badge_y, chip_w, badge_h)
+    c1_path = QPainterPath()
+    c1_path.addRoundedRect(c1_rect, 4.0, 4.0)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(QPen(QColor("#000000"), 1.0))
-    painter.drawPath(po_path)
+    painter.drawPath(c1_path)
 
-    painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
     painter.setPen(QColor("#000000"))
-    painter.drawText(QRectF(LM + 22, badge_y, 50, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "P.O. NO:")
+    painter.drawText(QRectF(c1_x + 4, badge_y, 24, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PO:")
+    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
+    painter.drawText(QRectF(c1_x + 28, badge_y, chip_w - 30, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
 
-    painter.setFont(QFont("Arial", 9.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#000000"))
-    painter.drawText(QRectF(LM + 72, badge_y, badge_w - 62, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
+    # Chip 2: Job Number
+    c2_x = c1_x + chip_w + chip_gap
+    c2_rect = QRectF(c2_x, badge_y, chip_w, badge_h)
+    c2_path = QPainterPath()
+    c2_path.addRoundedRect(c2_rect, 4.0, 4.0)
+    painter.drawPath(c2_path)
 
-    # Job Number Chip
-    job_x = LM + 14 + badge_w + 10.0
-    job_rect = QRectF(job_x, badge_y, badge_w, badge_h)
-    job_path = QPainterPath()
-    job_path.addRoundedRect(job_rect, 4.0, 4.0)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(QColor("#000000"), 1.0))
-    painter.drawPath(job_path)
+    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
+    painter.drawText(QRectF(c2_x + 4, badge_y, 28, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB:")
+    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
+    painter.drawText(QRectF(c2_x + 32, badge_y, chip_w - 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
 
-    painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
-    painter.setPen(QColor("#000000"))
-    painter.drawText(QRectF(job_x + 8, badge_y, 48, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB NO:")
+    # Chip 3: Customer P.O. Number
+    c3_x = c2_x + chip_w + chip_gap
+    c3_rect = QRectF(c3_x, badge_y, chip_w, badge_h)
+    c3_path = QPainterPath()
+    c3_path.addRoundedRect(c3_rect, 4.0, 4.0)
+    painter.drawPath(c3_path)
 
-    painter.setFont(QFont("Arial", 9.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#000000"))
-    painter.drawText(QRectF(job_x + 56, badge_y, badge_w - 60, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
+    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
+    painter.drawText(QRectF(c3_x + 4, badge_y, 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "C.PO:")
+    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
+    painter.drawText(QRectF(c3_x + 38, badge_y, chip_w - 40, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, cust_po_display)
 
     # 2. Right Card: Invoice Details (Transparent inside, black border)
     right_rect = QRectF(RIGHT_BOX_X, INFO_TOP, RIGHT_BOX_W, INFO_H)
@@ -338,8 +373,7 @@ def paint_pad(
     ROW_H = 32.0    # data row height
     TOT_H = 32.0    # totals row height
 
-    max_space = (A4_HEIGHT - 165.0) - TABLE_TOP - TH - TOT_H
-    num_rows = max(1, int(max_space / ROW_H))
+    num_rows = ITEMS_PER_PAGE
     TABLE_H = TH + (num_rows * ROW_H) + TOT_H
     TABLE_BOTTOM = TABLE_TOP + TABLE_H
 
@@ -425,19 +459,28 @@ def paint_pad(
 
     # 8. Data rows text — ALL CENTERED (No fills here, purely text!)
     items = data.get("items", [])
-    item_f = QFont("Arial", 10)
-    total_qty = 0.0
-    total_amt = 0.0
+    start_idx = (page_number - 1) * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    page_items = items[start_idx:end_idx]
 
-    for idx, item in enumerate(items[:num_rows]):
+    item_f = QFont("Arial", 10)
+    page_qty = 0.0
+    page_amt = 0.0
+    grand_qty = sum(float(it.get("quantity", 0.0)) for it in items)
+    grand_amt = sum(float(it.get("quantity", 0.0)) * float(it.get("rate", 0.0)) for it in items)
+
+    for idx in range(num_rows):
+        if idx >= len(page_items):
+            continue
+        item = page_items[idx]
         row_y = TABLE_TOP + TH + idx * ROW_H
-        sr   = str(idx + 1)
+        sr   = str(start_idx + idx + 1)
         desc = capitalize_words(str(item.get("description", "")))
         qty  = float(item.get("quantity", 0.0))
         rate = float(item.get("rate", 0.0))
         amt  = qty * rate
-        total_qty += qty
-        total_amt += amt
+        page_qty += qty
+        page_amt += amt
 
         painter.setFont(item_f)
         painter.setPen(QColor("#000000"))
@@ -458,36 +501,45 @@ def paint_pad(
             cur_x += width
 
     # 9. Totals row text
-    tf = QFont("Arial", 10, QFont.Weight.Bold)
+    tf = QFont("Arial", 9.5, QFont.Weight.Bold)
     painter.setFont(tf)
     painter.setPen(QColor("#000000"))
 
+    is_last_page = (page_number == total_pages)
+
     if is_bill:
+        tot_label = "TOTAL:" if total_pages == 1 else ("GRAND TOTAL:" if is_last_page else f"SUBTOTAL (PG {page_number}):")
+        display_qty = grand_qty if (total_pages == 1 or is_last_page) else page_qty
+        display_amt = grand_amt if (total_pages == 1 or is_last_page) else page_amt
+
         painter.drawText(
             QRectF(LM + 3, TOT_Y, cw["sr"] + cw["desc"] - 6, TOT_H),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            "TOTAL:",
+            tot_label,
         )
         painter.drawText(
             QRectF(LM + cw["sr"] + cw["desc"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
             Qt.AlignmentFlag.AlignCenter,
-            f"{total_qty:g}",
+            f"{display_qty:g}",
         )
         painter.drawText(
             QRectF(RM - cw["amt"] + 3, TOT_Y, cw["amt"] - 6, TOT_H),
             Qt.AlignmentFlag.AlignCenter,
-            f"{total_amt:,.2f}",
+            f"{display_amt:,.2f}",
         )
     else:
+        tot_label = "TOTAL QUANTITY:" if total_pages == 1 else ("GRAND TOTAL QTY:" if is_last_page else f"SUBTOTAL QTY (PG {page_number}):")
+        display_qty = grand_qty if (total_pages == 1 or is_last_page) else page_qty
+
         painter.drawText(
             QRectF(LM + 3, TOT_Y, cw["sr"] + cw["desc"] - 6, TOT_H),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            "TOTAL QUANTITY:",
+            tot_label,
         )
         painter.drawText(
             QRectF(RM - cw["qty"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
             Qt.AlignmentFlag.AlignCenter,
-            f"{total_qty:g}",
+            f"{display_qty:g}",
         )
 
     # ── SIGNATURE AREA ────────────────────────────────────────────────────
@@ -522,6 +574,15 @@ def paint_pad(
         "AG Printers  *  agprinters33@gmail.com  *  +92 300 966 9060",
     )
 
+    if total_pages > 1:
+        painter.setFont(QFont("Arial", 7.5, QFont.Weight.Bold))
+        painter.setPen(QColor("#64748b"))
+        painter.drawText(
+            QRectF(LM, A4_HEIGHT - 23, CW, 20),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            f"Page {page_number} of {total_pages}",
+        )
+
     painter.restore()
 
 
@@ -529,26 +590,50 @@ def paint_pad(
 class A4PageCanvas(QWidget):
     """Visual rendering of one A4 paper sheet on screen."""
 
-    def __init__(self, page_kind: str, data: dict[str, Any], parent=None) -> None:
+    def __init__(
+        self,
+        page_kind: str,
+        data: dict[str, Any],
+        page_number: int = 1,
+        total_pages: int = 1,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.page_kind = page_kind
         self.data = data
+        self.page_number = page_number
+        self.total_pages = total_pages
         self.setFixedSize(A4_WIDTH, A4_HEIGHT)
 
-    def set_data(self, data: dict[str, Any], page_kind: str | None = None) -> None:
+    def set_data(
+        self,
+        data: dict[str, Any],
+        page_kind: str | None = None,
+        page_number: int = 1,
+        total_pages: int = 1,
+    ) -> None:
         self.data = data
         if page_kind:
             self.page_kind = page_kind
+        self.page_number = page_number
+        self.total_pages = total_pages
         self.update()
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        paint_pad(painter, self.page_kind, self.data, QRectF(0, 0, self.width(), self.height()))
+        paint_pad(
+            painter,
+            self.page_kind,
+            self.data,
+            QRectF(0, 0, self.width(), self.height()),
+            page_number=self.page_number,
+            total_pages=self.total_pages,
+        )
         painter.end()
 
 
 class A4PrintPreviewDialog(QDialog):
-    """Full print-preview modal displaying Page 1 (Bill) and Page 2 (Delivery Challan)."""
+    """Full print-preview modal supporting multi-page pagination for Invoice and Gate Pass."""
 
     def __init__(self, data: dict[str, Any], parent=None) -> None:
         super().__init__(parent)
@@ -557,13 +642,22 @@ class A4PrintPreviewDialog(QDialog):
         self.setMinimumSize(940, 780)
         self.setObjectName("A4PrintPreviewDialog")
 
+        self._doc_pages = get_document_page_count(self.data)
+        self._pages_list: list[tuple[str, int, int]] = []
+        for p in range(1, self._doc_pages + 1):
+            self._pages_list.append(("BILL", p, self._doc_pages))
+        for p in range(1, self._doc_pages + 1):
+            self._pages_list.append(("CHALLAN", p, self._doc_pages))
+
+        self._current_index = 0
+
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
         # Top Control Bar
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(12)
+        toolbar.setSpacing(10)
 
         title = QLabel("A4 Document Preview")
         title.setObjectName("DialogTitle")
@@ -571,27 +665,38 @@ class A4PrintPreviewDialog(QDialog):
 
         toolbar.addStretch(1)
 
-        self._btn_group = QButtonGroup(self)
-        self._btn_bill = QPushButton("Page 1: INVOICE")
-        self._btn_bill.setCheckable(True)
-        self._btn_bill.setChecked(True)
-        self._btn_bill.setObjectName("OutlineButton")
-        self._btn_bill.clicked.connect(lambda: self._switch_page("BILL"))
-        self._btn_group.addButton(self._btn_bill)
-        toolbar.addWidget(self._btn_bill)
+        # Multi-page navigation
+        self._prev_btn = QPushButton("◀ Prev Page")
+        self._prev_btn.setObjectName("OutlineButton")
+        self._prev_btn.clicked.connect(self._go_prev)
+        toolbar.addWidget(self._prev_btn)
 
-        self._btn_challan = QPushButton("Page 2: GATE PASS")
-        self._btn_challan.setCheckable(True)
-        self._btn_challan.setObjectName("OutlineButton")
-        self._btn_challan.clicked.connect(lambda: self._switch_page("CHALLAN"))
-        self._btn_group.addButton(self._btn_challan)
-        toolbar.addWidget(self._btn_challan)
+        self._page_combo = QComboBox()
+        for idx, (kind, p_num, p_tot) in enumerate(self._pages_list):
+            doc_name = "INVOICE" if kind == "BILL" else "GATE PASS"
+            if p_tot > 1:
+                label = f"{doc_name} — Page {p_num} of {p_tot}"
+            else:
+                label = f"{doc_name}"
+            self._page_combo.addItem(label)
+        self._page_combo.currentIndexChanged.connect(self._on_combo_changed)
+        toolbar.addWidget(self._page_combo)
+
+        self._next_btn = QPushButton("Next Page ▶")
+        self._next_btn.setObjectName("OutlineButton")
+        self._next_btn.clicked.connect(self._go_next)
+        toolbar.addWidget(self._next_btn)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
         toolbar.addWidget(sep)
 
-        print_btn = QPushButton("Print (Both Pages)...")
+        print_label = (
+            f"Print (All {len(self._pages_list)} Pages)..."
+            if len(self._pages_list) > 2
+            else "Print (Both Pages)..."
+        )
+        print_btn = QPushButton(print_label)
         print_btn.setObjectName("PrimaryButton")
         print_btn.clicked.connect(self._print_documents)
         toolbar.addWidget(print_btn)
@@ -620,16 +725,41 @@ class A4PrintPreviewDialog(QDialog):
         c_layout.setContentsMargins(24, 24, 24, 24)
         c_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._canvas = A4PageCanvas("BILL", self.data)
-        # Subtle drop shadow style for sheet
+        initial_kind, initial_p, initial_tot = self._pages_list[0]
+        self._canvas = A4PageCanvas(initial_kind, self.data, page_number=initial_p, total_pages=initial_tot)
         self._canvas.setStyleSheet("border: 1px solid #9CA3AF;")
         c_layout.addWidget(self._canvas)
 
         scroll.setWidget(container)
         root.addWidget(scroll, 1)
 
-    def _switch_page(self, page_kind: str) -> None:
-        self._canvas.set_data(self.data, page_kind)
+        self._update_nav_buttons()
+
+    def _update_nav_buttons(self) -> None:
+        self._prev_btn.setEnabled(self._current_index > 0)
+        self._next_btn.setEnabled(self._current_index < len(self._pages_list) - 1)
+        if self._page_combo.currentIndex() != self._current_index:
+            self._page_combo.setCurrentIndex(self._current_index)
+
+    def _go_prev(self) -> None:
+        if self._current_index > 0:
+            self._current_index -= 1
+            self._show_page_index(self._current_index)
+
+    def _go_next(self) -> None:
+        if self._current_index < len(self._pages_list) - 1:
+            self._current_index += 1
+            self._show_page_index(self._current_index)
+
+    def _on_combo_changed(self, index: int) -> None:
+        if index >= 0 and index != self._current_index:
+            self._current_index = index
+            self._show_page_index(self._current_index)
+
+    def _show_page_index(self, index: int) -> None:
+        kind, p_num, p_tot = self._pages_list[index]
+        self._canvas.set_data(self.data, page_kind=kind, page_number=p_num, total_pages=p_tot)
+        self._update_nav_buttons()
 
     def _print_documents(self) -> None:
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
@@ -642,14 +772,16 @@ class A4PrintPreviewDialog(QDialog):
 
         painter = QPainter(printer)
         page_rect = printer.pageLayout().paintRectPixels(printer.resolution())
-        # Page 1: INVOICE
-        paint_pad(painter, "BILL", self.data, QRectF(page_rect))
-        # Page 2: GATE PASS
-        printer.newPage()
-        paint_pad(painter, "CHALLAN", self.data, QRectF(page_rect))
+        
+        first = True
+        for kind, p_num, p_tot in self._pages_list:
+            if not first:
+                printer.newPage()
+            first = False
+            paint_pad(painter, kind, self.data, QRectF(page_rect), page_number=p_num, total_pages=p_tot)
         painter.end()
 
-        QMessageBox.information(self, "Printed", "Sent Invoice and Gate Pass to printer successfully.")
+        QMessageBox.information(self, "Printed", f"Sent {len(self._pages_list)} document pages to printer successfully.")
 
     def _export_pdf(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -669,9 +801,14 @@ class A4PrintPreviewDialog(QDialog):
 
         painter = QPainter(printer)
         page_rect = printer.pageLayout().paintRectPixels(printer.resolution())
-        paint_pad(painter, "BILL", self.data, QRectF(page_rect))
-        printer.newPage()
-        paint_pad(painter, "CHALLAN", self.data, QRectF(page_rect))
+
+        first = True
+        for kind, p_num, p_tot in self._pages_list:
+            if not first:
+                printer.newPage()
+            first = False
+            paint_pad(painter, kind, self.data, QRectF(page_rect), page_number=p_num, total_pages=p_tot)
         painter.end()
 
         QMessageBox.information(self, "PDF Exported", f"Exported successfully to:\n{path}")
+
