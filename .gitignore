@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# Databases (never push business databases to git)
+*.db
+*.sqlite3
+data/
+
+# Tools & Output
+graphify-out/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS & Scratch
+.DS_Store
+Thumbs.db
+*.tmp
+*.zip
+*.log
+scratch_*.png
+test_*.png
+backups/

@@ -1,0 +1,1 @@
+"""Gate Pass / Challan module (V0.6) - challans created with their bills."""
