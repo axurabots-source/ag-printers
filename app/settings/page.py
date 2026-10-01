@@ -70,7 +70,7 @@ class ClearDataConfirmDialog(QDialog):
 
         warn_body = QLabel(
             "This action will permanently remove all business records (Parties, Purchase Orders, "
-            "Bills, Challans, Costing, and Barcode Inventory) from the database.<br/><br/>"
+            "Invoices, Gate Passes, Costing, and Barcode Inventory) from the database.<br/><br/>"
             "<b>A safety backup of the current database and PDFs will be created automatically first.</b><br/><br/>"
             "To confirm this destructive action, please type <b>CLEAR</b> below:"
         )

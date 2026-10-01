@@ -21,6 +21,7 @@ NAV_ICONS: dict[str, str] = {
     "New Job": "new_job",
     "Gate Pass": "gate_pass",
     "Bills": "bills",
+    "Invoices": "bills",
     "Costing": "costing",
     "Sales": "sales",
     "Ledger": "ledger",

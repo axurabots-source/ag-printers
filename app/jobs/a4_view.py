@@ -148,11 +148,12 @@ def paint_pad(
         "Deals in All Kind of Offset Printing & Labels",
     )
 
-    # Address right-aligned
-    painter.setFont(QFont("Arial", 7.5))
-    painter.setPen(QColor("#374151"))
+    # Address right-aligned (prominent, readable)
+    addr_font = QFont("Arial", 9.5)
+    painter.setFont(addr_font)
+    painter.setPen(QColor("#0F172A"))
     painter.drawText(
-        QRectF(RM - 220, TM, 220, LOGO_SZ),
+        QRectF(RM - 280, TM - 2, 280, LOGO_SZ + 10),
         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
         "Suite # 4, 1st Floor, Sultania Center\n"
         "St # 7, Munshi Mohallah,\n"
@@ -180,23 +181,22 @@ def paint_pad(
     painter.setPen(QPen(QColor("#000000"), 1.2))
     painter.drawPath(badge_path)
 
-    badge_font = QFont("Georgia", 10.5, QFont.Weight.Bold)
+    badge_font = QFont("Georgia", 11, QFont.Weight.Bold)
     badge_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
     painter.setFont(badge_font)
     painter.setPen(QColor("#000000"))
-    is_bill = page_kind == "BILL"
-    badge_label = "BILL" if is_bill else "DELIVERY CHALLAN"
+    is_bill = page_kind in ("BILL", "INVOICE")
+    badge_label = "INVOICE" if is_bill else "GATE PASS"
     painter.drawText(
         badge_rect,
         Qt.AlignmentFlag.AlignCenter,
         badge_label,
     )
 
-    # ── METADATA SECTION (Modern Integrated Info Cards) ───────────────────
+    # ── METADATA SECTION (Transparent cards with crisp black borders) ───────
     INFO_TOP = BADGE_Y + BADGE_H + 14
     INFO_H = 82.0
-    BOX_BORDER_PEN = QPen(QColor("#E2E8F0"), 1.0)
-    BOX_BG = QColor("#F8FAFC")
+    BOX_BORDER_PEN = QPen(QColor("#000000"), 1.2)
 
     raw_date = data.get("bill_date") or data.get("challan_date") or data.get("date") or data.get("created_at") or ""
     date_str = _format_pdf_date(str(raw_date)) if raw_date else "—"
@@ -219,20 +219,20 @@ def paint_pad(
     RIGHT_BOX_X = LM + LEFT_BOX_W + 14.0
     RIGHT_BOX_W = CW - (LEFT_BOX_W + 14.0)
 
-    # 1. Left Card: Customer / Billed To
+    # 1. Left Card: Customer / Invoiced To (Transparent inside, black border)
     left_rect = QRectF(LM, INFO_TOP, LEFT_BOX_W, INFO_H)
     left_path = QPainterPath()
     left_path.addRoundedRect(left_rect, 6.0, 6.0)
-    painter.fillPath(left_path, BOX_BG)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(BOX_BORDER_PEN)
     painter.drawPath(left_path)
 
-    # Billed To Label
+    # Invoiced / Delivered To Label
     lbl_font = QFont("Arial", 8, QFont.Weight.Bold)
     lbl_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.8)
     painter.setFont(lbl_font)
-    painter.setPen(QColor("#64748B"))
-    billed_tag = "BILLED TO:" if is_bill else "DELIVERED TO:"
+    painter.setPen(QColor("#000000"))
+    billed_tag = "INVOICED TO:" if is_bill else "DELIVERED TO:"
     painter.drawText(
         QRectF(LM + 14, INFO_TOP + 10, LEFT_BOX_W - 28, 14),
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -242,14 +242,14 @@ def paint_pad(
     # Customer Party Name
     party_font = QFont("Georgia", 13, QFont.Weight.Bold)
     painter.setFont(party_font)
-    painter.setPen(QColor("#0F172A"))
+    painter.setPen(QColor("#000000"))
     painter.drawText(
         QRectF(LM + 14, INFO_TOP + 26, LEFT_BOX_W - 28, 22),
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
         party_str if party_str else "Cash Customer",
     )
 
-    # PO / Job Reference Badges (Distinct highlighted chips)
+    # PO / Job Reference Badges (Clean transparent with black border)
     badge_y = INFO_TOP + 52
     badge_h = 24.0
     badge_w = (LEFT_BOX_W - 28.0 - 10.0) / 2.0
@@ -261,70 +261,70 @@ def paint_pad(
     po_rect = QRectF(LM + 14, badge_y, badge_w, badge_h)
     po_path = QPainterPath()
     po_path.addRoundedRect(po_rect, 4.0, 4.0)
-    painter.fillPath(po_path, QColor("#EFF6FF"))
-    painter.setPen(QPen(QColor("#BFDBFE"), 1.0))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QColor("#000000"), 1.0))
     painter.drawPath(po_path)
 
-    painter.setFont(QFont("Arial", 7.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#1D4ED8"))
-    painter.drawText(QRectF(LM + 22, badge_y, 48, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "P.O. NO:")
+    painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+    painter.setPen(QColor("#000000"))
+    painter.drawText(QRectF(LM + 22, badge_y, 50, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "P.O. NO:")
 
     painter.setFont(QFont("Arial", 9.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#0F172A"))
-    painter.drawText(QRectF(LM + 70, badge_y, badge_w - 60, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
+    painter.setPen(QColor("#000000"))
+    painter.drawText(QRectF(LM + 72, badge_y, badge_w - 62, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
 
     # Job Number Chip
     job_x = LM + 14 + badge_w + 10.0
     job_rect = QRectF(job_x, badge_y, badge_w, badge_h)
     job_path = QPainterPath()
     job_path.addRoundedRect(job_rect, 4.0, 4.0)
-    painter.fillPath(job_path, QColor("#F8FAFC"))
-    painter.setPen(QPen(QColor("#CBD5E1"), 1.0))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QColor("#000000"), 1.0))
     painter.drawPath(job_path)
 
-    painter.setFont(QFont("Arial", 7.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#475569"))
+    painter.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+    painter.setPen(QColor("#000000"))
     painter.drawText(QRectF(job_x + 8, badge_y, 48, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB NO:")
 
     painter.setFont(QFont("Arial", 9.5, QFont.Weight.Bold))
-    painter.setPen(QColor("#0F172A"))
+    painter.setPen(QColor("#000000"))
     painter.drawText(QRectF(job_x + 56, badge_y, badge_w - 60, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
 
-    # 2. Right Card: Invoice Details
+    # 2. Right Card: Invoice Details (Transparent inside, black border)
     right_rect = QRectF(RIGHT_BOX_X, INFO_TOP, RIGHT_BOX_W, INFO_H)
     right_path = QPainterPath()
     right_path.addRoundedRect(right_rect, 6.0, 6.0)
-    painter.fillPath(right_path, BOX_BG)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(BOX_BORDER_PEN)
     painter.drawPath(right_path)
 
-    # Right Card Rows
+    # Right Card Rows (Updated terminology: INVOICE NO & GATE PASS NO)
     meta_rows = [
-        ("BILL NO:" if is_bill else "CHALLAN NO:", bill_no_str if is_bill else dc_no_str),
+        ("INVOICE NO:" if is_bill else "GATE PASS NO:", bill_no_str if is_bill else dc_no_str),
         ("DATE:", date_str),
-        ("CHALLAN NO:" if is_bill else "BILL REF:", dc_no_str if is_bill else bill_no_str),
+        ("GATE PASS NO:" if is_bill else "INVOICE REF:", dc_no_str if is_bill else bill_no_str),
     ]
 
     row_y_offset = INFO_TOP + 8
     row_height = 22.0
 
-    meta_lbl_font = QFont("Arial", 8, QFont.Weight.Bold)
+    meta_lbl_font = QFont("Arial", 8.5, QFont.Weight.Bold)
     meta_lbl_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.5)
-    meta_val_font = QFont("Arial", 9.5, QFont.Weight.Bold)
+    meta_val_font = QFont("Arial", 10, QFont.Weight.Bold)
 
     for lbl_text, val_text in meta_rows:
         painter.setFont(meta_lbl_font)
-        painter.setPen(QColor("#64748B"))
+        painter.setPen(QColor("#000000"))
         painter.drawText(
-            QRectF(RIGHT_BOX_X + 14, row_y_offset, 110, row_height),
+            QRectF(RIGHT_BOX_X + 14, row_y_offset, 115, row_height),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             lbl_text,
         )
 
         painter.setFont(meta_val_font)
-        painter.setPen(QColor("#0F172A"))
+        painter.setPen(QColor("#000000"))
         painter.drawText(
-            QRectF(RIGHT_BOX_X + 115, row_y_offset, RIGHT_BOX_W - 129, row_height),
+            QRectF(RIGHT_BOX_X + 120, row_y_offset, RIGHT_BOX_W - 134, row_height),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             val_text,
         )
@@ -343,7 +343,6 @@ def paint_pad(
     TABLE_H = TH + (num_rows * ROW_H) + TOT_H
     TABLE_BOTTOM = TABLE_TOP + TABLE_H
 
-    is_bill = page_kind == "BILL"
     if is_bill:
         cw = {
             "sr":   44.0,
@@ -371,43 +370,60 @@ def paint_pad(
             ("QUANTITY", cw["qty"]),
         ]
 
-    BORDER = QPen(QColor("#374151"), 1.2)
-    GRID   = QPen(QColor("#d1d5db"), 0.7)
+    BORDER = QPen(QColor("#000000"), 1.2)
+    GRID   = QPen(QColor("#000000"), 1.0)
 
-    # Header fill
+    # 1. Header fill
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.fillRect(QRectF(LM, TABLE_TOP, CW, TH), QColor("#e8ecf0"))
+    painter.fillRect(QRectF(LM, TABLE_TOP, CW, TH), QColor("#f1f5f9"))
 
-    # Outer box + header line
+    # 2. Alternating row background fills (DONE FIRST - BEFORE ANY LINES!)
+    for idx in range(num_rows):
+        row_y = TABLE_TOP + TH + idx * ROW_H
+        if idx % 2 == 1:
+            painter.fillRect(QRectF(LM, row_y, CW, ROW_H), QColor("#f8fafc"))
+
+    # 3. Totals row fill
+    TOT_Y = TABLE_TOP + TH + num_rows * ROW_H
+    painter.fillRect(QRectF(LM, TOT_Y, CW, TOT_H), QColor("#f1f5f9"))
+
+    # 4. Horizontal Grid Lines (Drawn ON TOP of all background fills!)
+    painter.setPen(GRID)
+    painter.drawLine(QPointF(LM, TABLE_TOP + TH), QPointF(RM, TABLE_TOP + TH))
+    for r in range(1, num_rows):
+        y = TABLE_TOP + TH + r * ROW_H
+        painter.drawLine(QPointF(LM, y), QPointF(RM, y))
+    painter.drawLine(QPointF(LM, TOT_Y), QPointF(RM, TOT_Y))
+
+    # 5. Vertical Column Dividers (Drawn ON TOP of all fills from TABLE_TOP to TABLE_BOTTOM!)
+    cur_x = LM
+    for i, (title, width) in enumerate(cols):
+        cur_x += width
+        if i < len(cols) - 1:
+            painter.setPen(GRID)
+            painter.drawLine(QPointF(cur_x, TABLE_TOP), QPointF(cur_x, TABLE_BOTTOM))
+
+    # 6. Outer table border & header border
     painter.setPen(BORDER)
     painter.drawRect(QRectF(LM, TABLE_TOP, CW, TABLE_H))
     painter.drawLine(QPointF(LM, TABLE_TOP + TH), QPointF(RM, TABLE_TOP + TH))
+    painter.drawLine(QPointF(LM, TOT_Y), QPointF(RM, TOT_Y))
 
-    # Column headers (all centered)
-    hf = QFont("Arial", 8, QFont.Weight.Bold)
+    # 7. Column headers text (all centered)
+    hf = QFont("Arial", 8.5, QFont.Weight.Bold)
     hf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.4)
     painter.setFont(hf)
-    painter.setPen(QColor("#111827"))
+    painter.setPen(QColor("#000000"))
     cur_x = LM
     for i, (title, width) in enumerate(cols):
         painter.drawText(
-            QRectF(cur_x + 3, TABLE_TOP, width - 6, TH),
+            QRectF(cur_x + 2, TABLE_TOP, width - 4, TH),
             Qt.AlignmentFlag.AlignCenter,
             title,
         )
         cur_x += width
-        if i < len(cols) - 1:
-            painter.setPen(BORDER)
-            painter.drawLine(QPointF(cur_x, TABLE_TOP), QPointF(cur_x, TABLE_BOTTOM))
-            painter.setPen(QColor("#111827"))
 
-    # Row lines
-    painter.setPen(GRID)
-    for r in range(1, num_rows):
-        y = TABLE_TOP + TH + r * ROW_H
-        painter.drawLine(QPointF(LM + 1, y), QPointF(RM - 1, y))
-
-    # Data rows — ALL CENTERED
+    # 8. Data rows text — ALL CENTERED (No fills here, purely text!)
     items = data.get("items", [])
     item_f = QFont("Arial", 10)
     total_qty = 0.0
@@ -415,11 +431,6 @@ def paint_pad(
 
     for idx, item in enumerate(items[:num_rows]):
         row_y = TABLE_TOP + TH + idx * ROW_H
-        if idx % 2 == 1:
-            painter.fillRect(
-                QRectF(LM + 1, row_y + 1, CW - 2, ROW_H - 1), QColor("#f8fafc")
-            )
-
         sr   = str(idx + 1)
         desc = capitalize_words(str(item.get("description", "")))
         qty  = float(item.get("quantity", 0.0))
@@ -429,7 +440,7 @@ def paint_pad(
         total_amt += amt
 
         painter.setFont(item_f)
-        painter.setPen(QColor("#111827"))
+        painter.setPen(QColor("#000000"))
 
         cur_x = LM
         row_vals = (
@@ -446,15 +457,10 @@ def paint_pad(
             )
             cur_x += width
 
-    # Totals row
-    TOT_Y = TABLE_TOP + TH + num_rows * ROW_H
-    painter.setPen(BORDER)
-    painter.drawLine(QPointF(LM, TOT_Y), QPointF(RM, TOT_Y))
-    painter.fillRect(QRectF(LM + 1, TOT_Y + 1, CW - 2, TOT_H - 1), QColor("#f1f5f9"))
-
+    # 9. Totals row text
     tf = QFont("Arial", 10, QFont.Weight.Bold)
     painter.setFont(tf)
-    painter.setPen(QColor("#0f172a"))
+    painter.setPen(QColor("#000000"))
 
     if is_bill:
         painter.drawText(
@@ -566,7 +572,7 @@ class A4PrintPreviewDialog(QDialog):
         toolbar.addStretch(1)
 
         self._btn_group = QButtonGroup(self)
-        self._btn_bill = QPushButton("Page 1: BILL")
+        self._btn_bill = QPushButton("Page 1: INVOICE")
         self._btn_bill.setCheckable(True)
         self._btn_bill.setChecked(True)
         self._btn_bill.setObjectName("OutlineButton")
@@ -574,7 +580,7 @@ class A4PrintPreviewDialog(QDialog):
         self._btn_group.addButton(self._btn_bill)
         toolbar.addWidget(self._btn_bill)
 
-        self._btn_challan = QPushButton("Page 2: DELIVERY CHALLAN")
+        self._btn_challan = QPushButton("Page 2: GATE PASS")
         self._btn_challan.setCheckable(True)
         self._btn_challan.setObjectName("OutlineButton")
         self._btn_challan.clicked.connect(lambda: self._switch_page("CHALLAN"))
@@ -636,20 +642,20 @@ class A4PrintPreviewDialog(QDialog):
 
         painter = QPainter(printer)
         page_rect = printer.pageLayout().paintRectPixels(printer.resolution())
-        # Page 1: BILL
+        # Page 1: INVOICE
         paint_pad(painter, "BILL", self.data, QRectF(page_rect))
-        # Page 2: DELIVERY CHALLAN
+        # Page 2: GATE PASS
         printer.newPage()
         paint_pad(painter, "CHALLAN", self.data, QRectF(page_rect))
         painter.end()
 
-        QMessageBox.information(self, "Printed", "Sent Bill and Delivery Challan to printer successfully.")
+        QMessageBox.information(self, "Printed", "Sent Invoice and Gate Pass to printer successfully.")
 
     def _export_pdf(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Bill and Challan PDF",
-            f"AG_Bill_{self.data.get('bill_number', 'Doc')}.pdf",
+            "Export Invoice and Gate Pass PDF",
+            f"AG_Invoice_{self.data.get('bill_number', 'Doc')}.pdf",
             "PDF Files (*.pdf)",
         )
         if not path:

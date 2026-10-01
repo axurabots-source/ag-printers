@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
                 page = PartiesPage(self._connection)
                 page.profile_opened.connect(self._on_profile_opened)
                 page.profile_closed.connect(self._on_profile_closed)
-            elif name == "Bills":
+            elif name in ("Invoices", "Bills"):
                 page = BillsPage(self._connection)
                 page.document_opened.connect(self._on_document_opened)
                 page.list_shown.connect(self._on_bills_list_shown)
@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
 
     def _on_job_bill_saved(self, bill_id: int) -> None:
         """Status note when a bill & challan are saved from New Job workspace."""
-        self.statusBar().showMessage(f"Job saved successfully as Bill #{bill_id}")
+        self.statusBar().showMessage(f"Job saved successfully as Invoice #{bill_id}")
 
     def _on_profile_opened(self, party_name: str) -> None:
         """Header/status update when a party profile is shown."""
@@ -170,13 +170,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Parties")
 
     def _on_document_opened(self, number: str) -> None:
-        """Status note when a bill or challan document is shown (V0.6)."""
+        """Status note when an invoice or gate pass document is shown."""
         self.statusBar().showMessage(f"Document: {number}")
 
     def _on_bills_list_shown(self) -> None:
-        """Header/status update when the bills list is shown."""
-        self._header.set_page_title("Bills")
-        self.statusBar().showMessage("Bills")
+        """Header/status update when the invoices list is shown."""
+        self._header.set_page_title("Invoices")
+        self.statusBar().showMessage("Invoices")
 
     def _on_gate_pass_list_shown(self) -> None:
         """Header/status update when the challan list is shown."""

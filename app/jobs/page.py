@@ -122,9 +122,9 @@ class NewJobPage(QWidget):
         title_box = QVBoxLayout()
         title_box.setSpacing(3)
 
-        title = QLabel("New Job & Billing Terminal")
+        title = QLabel("New Job & Invoicing Terminal")
         title.setObjectName("DialogTitle")
-        subtitle = QLabel("Create and print Bill & Delivery Challan together on a single screen.")
+        subtitle = QLabel("Create and print Invoice & Gate Pass together on a single screen.")
         subtitle.setObjectName("FieldLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -162,7 +162,7 @@ class NewJobPage(QWidget):
         self._party_combo.currentIndexChanged.connect(self._on_party_selected)
         party_row.addWidget(self._party_combo, 1)
 
-        self._party_info = QLabel("Please choose a party to load billing tools.")
+        self._party_info = QLabel("Please choose a party to load invoicing tools.")
         self._party_info.setObjectName("FieldValue")
         party_row.addWidget(self._party_info, 2)
 
@@ -178,11 +178,11 @@ class NewJobPage(QWidget):
         ph_layout.setSpacing(6)
         ph_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        ph_title = QLabel("Ready to Draft Bill & Delivery Challan")
+        ph_title = QLabel("Ready to Draft Invoice & Gate Pass")
         ph_title.setObjectName("DialogTitle")
         ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        ph_sub = QLabel("Select a client from the dropdown above to load the billing terminal, document numbers, and auto-expanding items.")
+        ph_sub = QLabel("Select a client from the dropdown above to load the invoicing terminal, document numbers, and auto-expanding items.")
         ph_sub.setObjectName("FieldLabel")
         ph_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -229,7 +229,7 @@ class NewJobPage(QWidget):
         # Bill # (Auto suggested, editable)
         bill_box = QVBoxLayout()
         bill_box.setSpacing(4)
-        bill_lbl = QLabel("Bill # (Auto)")
+        bill_lbl = QLabel("Invoice # (Auto)")
         bill_lbl.setObjectName("FieldLabel")
         self._bill_num_edit = QLineEdit()
         self._bill_num_edit.setObjectName("FormInput")
@@ -238,10 +238,10 @@ class NewJobPage(QWidget):
         bill_box.addWidget(self._bill_num_edit)
         meta_grid.addLayout(bill_box)
 
-        # Challan / D.C. # (Auto suggested, editable)
+        # Gate Pass # (Auto suggested, editable)
         dc_box = QVBoxLayout()
         dc_box.setSpacing(4)
-        dc_lbl = QLabel("D.C. # / Challan # (Auto)")
+        dc_lbl = QLabel("Gate Pass # (Auto)")
         dc_lbl.setObjectName("FieldLabel")
         self._dc_num_edit = QLineEdit()
         self._dc_num_edit.setObjectName("FormInput")
@@ -288,7 +288,7 @@ class NewJobPage(QWidget):
 
         t_header = QHBoxLayout()
         t_header.setSpacing(12)
-        grid_title = QLabel("3. BILL & CHALLAN ITEMS (AUTO-EXPANDING)")
+        grid_title = QLabel("3. INVOICE & GATE PASS ITEMS (AUTO-EXPANDING)")
         grid_title.setObjectName("SectionLabel")
         t_header.addWidget(grid_title)
 
@@ -456,7 +456,7 @@ class NewJobPage(QWidget):
         action_bar.setSpacing(14)
         action_bar.addStretch(1)
 
-        self._preview_btn = QPushButton("Print / Preview A4 (Bill & Challan)...")
+        self._preview_btn = QPushButton("Print / Preview A4 (Invoice & Gate Pass)...")
         self._preview_btn.setObjectName("OutlineButton")
         self._preview_btn.setIcon(QIcon(EYE_SVG))
         self._preview_btn.setIconSize(QSize(16, 16))
@@ -464,7 +464,7 @@ class NewJobPage(QWidget):
         self._preview_btn.clicked.connect(self._open_preview)
         action_bar.addWidget(self._preview_btn)
 
-        self._save_btn = QPushButton("Save & Generate Bill + Challan")
+        self._save_btn = QPushButton("Save & Generate Invoice + Gate Pass")
         self._save_btn.setObjectName("SuccessButton")
         self._save_btn.setIcon(QIcon(CHECK_SVG))
         self._save_btn.setIconSize(QSize(16, 16))
@@ -502,7 +502,7 @@ class NewJobPage(QWidget):
         party_id = self._party_combo.currentData()
         if party_id is None:
             self._selected_party = None
-            self._party_info.setText("Please choose a party to load billing tools.")
+            self._party_info.setText("Please choose a party to load invoicing tools.")
             self._bill_container.setVisible(False)
             self._placeholder_guide.setVisible(True)
             return
@@ -999,7 +999,7 @@ class NewJobPage(QWidget):
                 profit=net_profit,
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Error Saving Bill", str(exc))
+            QMessageBox.critical(self, "Error Saving Invoice", str(exc))
             return
 
         # Deduct barcode inventory stock for any materials used in costing
@@ -1027,8 +1027,8 @@ class NewJobPage(QWidget):
         # Success message with option to print
         answer = QMessageBox.information(
             self,
-            "Bill & Challan Generated",
-            f"Bill #{data['bill_number']} and Delivery Challan #{data['gate_pass_number']} have been generated and saved successfully.\n\n"
+            "Invoice & Gate Pass Generated",
+            f"Invoice #{data['bill_number']} and Gate Pass #{data['gate_pass_number']} have been generated and saved successfully.\n\n"
             f"Client: {data['party_name']}\n"
             f"Job #: {data['job_number'] or 'None'}\n"
             f"P.O. #: {data['po_number'] or 'None'}\n"

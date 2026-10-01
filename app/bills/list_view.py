@@ -101,14 +101,14 @@ class BillsListView(QWidget):
     open_requested = Signal(int)
 
     _COLUMNS = (
-        "Bill Number",
+        "Invoice Number",
         "Date",
         "Party",
         "PO Number",
         "Items",
         "Total",
         "Profit",
-        "Challan",
+        "Gate Pass",
         "PDF",
     )
 
@@ -127,12 +127,12 @@ class BillsListView(QWidget):
 
         self._search = QLineEdit()
         self._search.setObjectName("SearchBox")
-        self._search.setPlaceholderText("Search by bill #, party, PO, or challan #...")
+        self._search.setPlaceholderText("Search by invoice #, party, PO, or gate pass #...")
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumWidth(240)
         self._search.textChanged.connect(self.refresh)
 
-        self._delete_button = QPushButton("Delete Bill")
+        self._delete_button = QPushButton("Delete Invoice")
         self._delete_button.setObjectName("DangerButton")
         self._delete_button.setStyleSheet(DANGER_BTN_STYLE)
         self._delete_button.setEnabled(False)
@@ -235,21 +235,21 @@ class BillsListView(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
         # Optimized widths: slightly trimmed other columns so Date is 100% visible and unhidden
-        self._table.setColumnWidth(0, 105)  # Bill Number
+        self._table.setColumnWidth(0, 115)  # Invoice Number
         self._table.setColumnWidth(1, 130)  # Date (ample room, completely unhidden)
         self._table.setColumnWidth(2, 175)  # Party Name (stretches wider)
         self._table.setColumnWidth(3, 95)   # PO Number
         self._table.setColumnWidth(4, 55)   # Items
         self._table.setColumnWidth(5, 115)  # Total Amount
         self._table.setColumnWidth(6, 105)  # Profit
-        self._table.setColumnWidth(7, 140)  # Challan No (CHALLAN-0001 fits completely)
+        self._table.setColumnWidth(7, 130)  # Gate Pass No
         self._table.setColumnWidth(8, 90)   # PDF button
 
         self._table.itemSelectionChanged.connect(self._sync_selection)
         self._table.cellDoubleClicked.connect(lambda _r, _c: self._open_selected())
 
         self._empty = QLabel(
-            "No bills found for the selected filter."
+            "No invoices found for the selected filter."
         )
         self._empty.setObjectName("EmptyState")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -358,7 +358,7 @@ class BillsListView(QWidget):
             gp_val = bill.gate_pass_number or "—"
             gp_item = QTableWidgetItem(gp_val)
             gp_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            gp_item.setToolTip(bill.gate_pass_number or "No Challan")
+            gp_item.setToolTip(bill.gate_pass_number or "No Gate Pass")
             self._table.setItem(row, 7, gp_item)
 
             pdf_btn = QPushButton("Open PDF")

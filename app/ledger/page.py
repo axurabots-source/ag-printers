@@ -77,11 +77,11 @@ class LedgerPage(QWidget):
     """Read-only ledger showing net profit per bill with date filtering and KPI cards."""
 
     _COLUMNS = (
-        "Bill No.",
+        "Invoice No.",
         "Date",
         "Party",
         "PO Number",
-        "Challan",
+        "Gate Pass",
         "Total Amount",
         "Net Profit",
         "PDF",
@@ -105,7 +105,7 @@ class LedgerPage(QWidget):
 
         self._search = QLineEdit()
         self._search.setObjectName("SearchBox")
-        self._search.setPlaceholderText("Search by bill #, party, PO, or challan #...")
+        self._search.setPlaceholderText("Search by invoice #, party, PO, or gate pass #...")
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumWidth(260)
         self._search.textChanged.connect(self.refresh)
@@ -186,7 +186,7 @@ class LedgerPage(QWidget):
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(14)
 
-        card1, self._kpi_bills_val, self._kpi_bills_sub = self._make_kpi_card("TOTAL BILLS", "#0F172A")
+        card1, self._kpi_bills_val, self._kpi_bills_sub = self._make_kpi_card("TOTAL INVOICES", "#0F172A")
         card2, self._kpi_revenue_val, self._kpi_revenue_sub = self._make_kpi_card("TOTAL REVENUE", "#2563EB")
         card3, self._kpi_profit_val, self._kpi_profit_sub = self._make_kpi_card("TOTAL NET PROFIT", "#059669")
 
@@ -416,7 +416,7 @@ class LedgerPage(QWidget):
 
         # Update KPI Cards (bary boxes) -----------------------------------
         count = len(bills)
-        self._kpi_bills_val.setText(f"{count} {'Bill' if count == 1 else 'Bills'}")
+        self._kpi_bills_val.setText(f"{count} {'Invoice' if count == 1 else 'Invoices'}")
 
         mode = self._date_mode.currentText()
         if mode == "All Dates":

@@ -47,11 +47,11 @@ class GatePassPage(QWidget):
     list_shown = Signal()
 
     _COLUMNS = (
-        "Challan Number",
+        "Gate Pass Number",
         "Date",
         "Party",
         "PO Number",
-        "Bill Number",
+        "Invoice Number",
         "Items",
         "Qty",
         "PDF",
@@ -77,13 +77,13 @@ class GatePassPage(QWidget):
         self._document.back_requested.connect(self.reset_to_list)
         self._showing = "challan"
         self._toggle_button = self._document.add_action(
-            "Open Bill", self._toggle_document
+            "Open Invoice", self._toggle_document
         )
 
     # -- list ------------------------------------------------------------
 
     def _build_list(self) -> QWidget:
-        """Toolbar + table of challans (read-only: they come from bills)."""
+        """Toolbar + table of gate passes (read-only: they come from invoices)."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -91,7 +91,7 @@ class GatePassPage(QWidget):
 
         self._search = QLineEdit()
         self._search.setObjectName("SearchBox")
-        self._search.setPlaceholderText("Search by challan, bill, party or PO...")
+        self._search.setPlaceholderText("Search by gate pass, invoice, party or PO...")
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumWidth(240)
         self._search.textChanged.connect(self._refresh)
@@ -133,7 +133,7 @@ class GatePassPage(QWidget):
         self._table.setColumnWidth(7, 110)
 
         self._empty = QLabel(
-            "No challans yet. One is generated automatically with every bill."
+            "No gate passes yet. One is generated automatically with every invoice."
         )
         self._empty.setObjectName("EmptyState")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -242,7 +242,7 @@ class GatePassPage(QWidget):
             return
         self._gate_pass = gate_pass
         self._showing = "challan"
-        self._toggle_button.setText("Open Bill")
+        self._toggle_button.setText("Open Invoice")
         self._document.set_challan(gate_pass, bill)
         self._stack.setCurrentIndex(1)
         self.document_opened.emit(gate_pass.gate_pass_number)
@@ -256,7 +256,7 @@ class GatePassPage(QWidget):
             return
         self._gate_pass = gate_pass
         self._showing = "bill"
-        self._toggle_button.setText("Open Challan")
+        self._toggle_button.setText("Open Gate Pass")
         self._document.set_bill(bill)
         self._stack.setCurrentIndex(1)
         self.document_opened.emit(bill.bill_number)

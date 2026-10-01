@@ -24,18 +24,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 #: Internal document numbers - sequential, unique, never typed by the user.
-BILL_NUMBER_PREFIX = "BILL"
-GATE_PASS_NUMBER_PREFIX = "CHALLAN"
+BILL_NUMBER_PREFIX = "INV"
+GATE_PASS_NUMBER_PREFIX = "GP"
 NUMBER_WIDTH = 4
 
 
 def format_bill_number(value: int) -> str:
-    """Format an internal bill serial: ``1`` -> ``BILL-0001``."""
+    """Format an internal invoice serial: ``1`` -> ``INV-0001``."""
     return f"{BILL_NUMBER_PREFIX}-{value:0{NUMBER_WIDTH}d}"
 
 
 def format_gate_pass_number(value: int) -> str:
-    """Format an internal challan serial: ``1`` -> ``CHALLAN-0001``."""
+    """Format an internal gate pass serial: ``2000`` -> ``GP-2000``."""
     return f"{GATE_PASS_NUMBER_PREFIX}-{value:0{NUMBER_WIDTH}d}"
 
 
@@ -130,15 +130,20 @@ class Bill:
 
 
 def _suggest_number(
-    connection: sqlite3.Connection, table: str, column: str, prefix: str
+    connection: sqlite3.Connection,
+    table: str,
+    column: str,
+    prefix: str,
+    min_start: int = 1,
 ) -> str:
-    """Next free internal serial for *table* (highest existing + 1)."""
-    highest = 0
+    """Next free internal serial for *table* (highest existing + 1, at least min_start)."""
+    highest = min_start - 1
     for row in connection.execute(f"SELECT {column} FROM {table}"):
-        match = re.search(r"(\d+)$", row[column] or "")
+        val = str(row[column] or "")
+        match = re.search(r"(\d+)$", val)
         if match:
             highest = max(highest, int(match.group(1)))
-    candidate = highest + 1
+    candidate = max(min_start, highest + 1)
     while connection.execute(
         f"SELECT 1 FROM {table} WHERE {column} = ? COLLATE NOCASE",
         (f"{prefix}-{candidate:0{NUMBER_WIDTH}d}",),
@@ -148,14 +153,14 @@ def _suggest_number(
 
 
 def suggest_bill_number(connection: sqlite3.Connection) -> str:
-    """Next free internal bill number, e.g. ``BILL-0001``."""
-    return _suggest_number(connection, "bills", "bill_number", BILL_NUMBER_PREFIX)
+    """Next free internal invoice number, e.g. ``INV-0012``."""
+    return _suggest_number(connection, "bills", "bill_number", BILL_NUMBER_PREFIX, min_start=1)
 
 
 def suggest_gate_pass_number(connection: sqlite3.Connection) -> str:
-    """Next free internal challan number, e.g. ``CHALLAN-0001``."""
+    """Next free internal gate pass number starting from 2000, e.g. ``GP-2000``."""
     return _suggest_number(
-        connection, "gate_passes", "gate_pass_number", GATE_PASS_NUMBER_PREFIX
+        connection, "gate_passes", "gate_pass_number", GATE_PASS_NUMBER_PREFIX, min_start=2000
     )
 
 

@@ -50,7 +50,7 @@ class Sidebar(QFrame):
         "New Job",
         "Parties",
         "Gate Pass",
-        "Bills",
+        "Invoices",
         "Costing",
         "Inventory",
         "Ledger",
@@ -343,7 +343,7 @@ class Sidebar(QFrame):
         current_dir = get_pdf_export_dir()
         path_str = str(current_dir)
         self._pdf_path_label.setText(path_str)
-        self._pdf_path_label.setToolTip(f"Bills and Challans will be saved here:\n{path_str}")
+        self._pdf_path_label.setToolTip(f"Invoices and Gate Passes will be saved here:\n{path_str}")
 
     def _on_choose_pdf_folder(self) -> None:
         current = str(get_pdf_export_dir())

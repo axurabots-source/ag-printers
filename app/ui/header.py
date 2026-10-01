@@ -17,10 +17,11 @@ from app import __version__
 
 PAGE_METADATA: dict[str, str] = {
     "Dashboard": "Real-time metrics, financial summary & recent invoices",
-    "New Job": "Create & print customer bills, delivery challans and pads",
+    "New Job": "Create & print customer invoices, gate passes and pads",
     "Parties": "Customer & vendor profiles, ledgers and balances",
     "Party Profile": "Detailed party transactions, ledger view and statements",
-    "Gate Pass": "Delivery challans, gate passes and dispatch history",
+    "Gate Pass": "Gate passes, delivery tracking and dispatch history",
+    "Invoices": "All generated invoices, receivable tracking and statuses",
     "Bills": "All generated invoices, receivable tracking and statuses",
     "Costing": "Printing cost estimation, paper calculations & job margins",
     "Inventory": "Raw materials, paper stock and consumable inventory",

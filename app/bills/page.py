@@ -44,10 +44,10 @@ class BillsPage(QWidget):
         self._document.back_requested.connect(self.reset_to_list)
 
         self._challan_button = self._document.add_action(
-            "Open Challan", self._open_current_challan
+            "Open Gate Pass", self._open_current_challan
         )
         self._delete_button = self._document.add_action(
-            "Delete Bill", self._delete_current, danger=True
+            "Delete Invoice", self._delete_current, danger=True
         )
 
     # -- public API (used by MainWindow and the PO module) -------------
@@ -76,7 +76,7 @@ class BillsPage(QWidget):
         bill = get_bill(self._connection, bill_id)
         if bill is None or bill.gate_pass is None:
             QMessageBox.information(
-                self, "No challan", "This bill has no matching challan."
+                self, "No Gate Pass", "This invoice has no matching gate pass."
             )
             return
         self._bill = bill
@@ -108,10 +108,10 @@ class BillsPage(QWidget):
             return
         answer = QMessageBox.question(
             self,
-            "Delete Bill",
-            f"Delete bill {bill.bill_number} for {bill.party_name}?\n\n"
-            f"Its matching challan {bill.gate_pass_number or '-'} and every "
-            "billed line will be removed. This cannot be undone.",
+            "Delete Invoice",
+            f"Delete invoice {bill.bill_number} for {bill.party_name}?\n\n"
+            f"Its matching gate pass {bill.gate_pass_number or '-'} and every "
+            "invoiced line will be removed. This cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

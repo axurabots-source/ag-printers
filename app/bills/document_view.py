@@ -68,7 +68,7 @@ class DocumentView(QWidget):
         form.setContentsMargins(32, 28, 32, 28)
         form.setSpacing(18)
 
-        self._title = QLabel("BILL")
+        self._title = QLabel("INVOICE")
         self._title.setObjectName("ProfileName")
         self._number = QLabel("-")
         self._number.setObjectName("FieldValue")
@@ -144,18 +144,18 @@ class DocumentView(QWidget):
     # -- data --------------------------------------------------------------
 
     def set_bill(self, bill: Bill) -> None:
-        """Render the BILL document of *bill*."""
+        """Render the INVOICE document of *bill*."""
         self._render(
-            kind="BILL",
+            kind="INVOICE",
             number=bill.bill_number,
             date=bill.bill_date,
             party=bill.party_name,
             po_number=bill.po_number,
             related=bill.gate_pass_number,
             note=(
-                "Challan / Gate Pass "
+                "Gate Pass "
                 f"{bill.gate_pass_number or '-'} was created automatically "
-                "with this bill."
+                "with this invoice."
             ),
             rows=[
                 (item.description, item.quantity, item.rate) for item in bill.items
@@ -168,17 +168,17 @@ class DocumentView(QWidget):
         )
 
     def set_challan(self, gate_pass: GatePass, bill: Bill) -> None:
-        """Render the CHALLAN / GATE PASS that belongs to *bill*."""
+        """Render the GATE PASS that belongs to *bill*."""
         self._render(
-            kind="CHALLAN / GATE PASS",
+            kind="GATE PASS",
             number=gate_pass.gate_pass_number,
             date=gate_pass.gate_pass_date,
             party=bill.party_name,
             po_number=bill.po_number,
             related=bill.bill_number,
             note=(
-                f"This gate pass belongs to BILL {bill.bill_number} "
-                "(one challan per bill)."
+                f"This gate pass belongs to INVOICE {bill.bill_number} "
+                "(one gate pass per invoice)."
             ),
             rows=[(item.description, item.quantity) for item in bill.items],
             show_rates=False,

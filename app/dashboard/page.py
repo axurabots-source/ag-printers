@@ -266,8 +266,8 @@ class DashboardPage(QWidget):
         cards_grid.addWidget(self._card_profit, 0, 1)
 
         self._card_docs = KpiCard(
-            title="Bills & Gate Passes",
-            value="0 Bills / 0 Challans",
+            title="Invoices & Gate Passes",
+            value="0 Invoices / 0 Gate Passes",
             subtitle="Active Clients: 0",
             icon_kind="bills",
             is_profit=False,
@@ -414,10 +414,10 @@ class DashboardPage(QWidget):
         self._bills_table = QTableWidget(0, 7)
         self._bills_table.setObjectName("DashboardBillsTable")
         self._bills_table.setHorizontalHeaderLabels([
-            "Bill #",
+            "Invoice #",
             "Client / Party",
             "Date",
-            "Challan",
+            "Gate Pass",
             "Total",
             "Profit",
             "PDF",
@@ -607,7 +607,7 @@ class DashboardPage(QWidget):
             f"{kpi['profit_margin']:.1f}% profit margin",
         )
         self._card_docs.update_metrics(
-            f"{kpi['total_bills']} Bills / {kpi['total_gate_passes']} Challans",
+            f"{kpi['total_bills']} Invoices / {kpi['total_gate_passes']} Gate Passes",
             f"Active Clients: {kpi['total_parties']}",
         )
         low_txt = f"{kpi['low_stock_count']} low stock" if kpi['low_stock_count'] > 0 else "Stock healthy"
