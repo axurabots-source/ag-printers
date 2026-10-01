@@ -147,7 +147,7 @@ class BarcodeMaterialRow:
     def _recalc(self) -> None:
         cost = self.get_cost()
         self.cost_lbl.setText(f"Rs. {cost:,.2f}")
-        self._on_change()
+        self._on_change(self.qty_spin.value())
 
     def get_cost(self) -> float:
         return round(self.qty_spin.value() * self.rate_spin.value(), 2)
@@ -161,6 +161,8 @@ class BarcodeInventoryCostingWidget(QFrame):
     """
 
     cost_changed = Signal()
+    qty_changed = Signal(float)
+    item_selected = Signal(str)
 
     def __init__(self, connection: sqlite3.Connection | None = None, parent=None) -> None:
         super().__init__(parent)
@@ -239,6 +241,7 @@ class BarcodeInventoryCostingWidget(QFrame):
         self._input_qty.setFixedWidth(65)
         self._input_qty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._input_qty.setStyleSheet("font-size: 11px; font-weight: 700; padding: 3px;")
+        self._input_qty.valueChanged.connect(self._on_input_qty_changed)
         row_b.addWidget(self._input_qty)
 
         lbl_r = QLabel("Rate (Rs):")
@@ -331,6 +334,17 @@ class BarcodeInventoryCostingWidget(QFrame):
         # Load inventory into combo
         self.refresh_inventory()
 
+    def _on_input_qty_changed(self, val: float) -> None:
+        if val > 0:
+            self.qty_changed.emit(val)
+
+    def set_default_qty(self, qty: float) -> None:
+        """Update picker input qty when sheet calculator qty changes."""
+        if qty > 0 and abs(self._input_qty.value() - qty) > 0.001:
+            self._input_qty.blockSignals(True)
+            self._input_qty.setValue(qty)
+            self._input_qty.blockSignals(False)
+
     def refresh_inventory(self) -> None:
         """Reload available items from barcode_inventory table."""
         self._inventory_items = list_barcode_inventory(self._connection)
@@ -355,6 +369,7 @@ class BarcodeInventoryCostingWidget(QFrame):
         item = self._combo.itemData(index)
         if isinstance(item, BarcodeInventoryItem):
             self._input_rate.setValue(item.rate)
+            self.item_selected.emit(item.detail)
 
     def _add_current_material(self) -> None:
         item = self._combo.itemData(self._combo.currentIndex())
@@ -381,7 +396,7 @@ class BarcodeInventoryCostingWidget(QFrame):
         )
         self._rows.append(row)
         self._rebuild_table()
-        self._on_row_changed()
+        self._on_row_changed(qty)
 
     def _remove_row(self, row: BarcodeMaterialRow) -> None:
         if row in self._rows:
@@ -389,10 +404,12 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._rebuild_table()
             self._on_row_changed()
 
-    def _on_row_changed(self) -> None:
+    def _on_row_changed(self, qty: float | None = None) -> None:
         total = self.get_total()
         self.lbl_mat_total.setText(f"Material Cost: Rs. {total:,.2f}")
         self.cost_changed.emit()
+        if qty is not None and qty > 0:
+            self.qty_changed.emit(qty)
 
     def _rebuild_table(self) -> None:
         self._table.setRowCount(0)
@@ -430,13 +447,37 @@ class BarcodeInventoryCostingWidget(QFrame):
         """Sum of all selected barcode inventory materials."""
         return round(sum(r.get_cost() for r in self._rows), 2)
 
+    def get_selected_description(self) -> str:
+        """Return the detail of the selected barcode material(s)."""
+        if self._rows:
+            return ", ".join(r.detail for r in self._rows if r.detail)
+        idx = self._combo.currentIndex()
+        if idx >= 0:
+            item = self._combo.itemData(idx)
+            if isinstance(item, BarcodeInventoryItem) and item.detail:
+                return item.detail
+        return ""
+
     def get_selected_materials(self) -> list[tuple[int, float]]:
         """List of (item_id, quantity) for all chosen materials to deduct on bill save."""
-        return [(r.item_id, float(r.qty_spin.value())) for r in self._rows if r.item_id]
+        if self._rows:
+            return [(r.item_id, float(r.qty_spin.value())) for r in self._rows if r.item_id]
+
+        idx = self._combo.currentIndex()
+        if idx >= 0:
+            item = self._combo.itemData(idx)
+            if isinstance(item, BarcodeInventoryItem) and item.id:
+                qty = float(self._input_qty.value())
+                if qty > 0:
+                    return [(item.id, qty)]
+        return []
 
     def clear(self) -> None:
         """Clear all selected materials."""
         self._rows.clear()
         self._rebuild_table()
+        self._input_qty.blockSignals(True)
+        self._input_qty.setValue(1.0)
+        self._input_qty.blockSignals(False)
         self._on_row_changed()
 

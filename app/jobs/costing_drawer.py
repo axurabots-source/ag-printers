@@ -36,15 +36,18 @@ class JobCostingDrawer(QFrame):
     cost_unit_calculated = Signal(int, float)
     #: Emitted whenever Sell Price is entered/changed, passing (row_index, sell_price).
     sell_price_calculated = Signal(int, float)
-    #: Emitted when user clicks "Apply Rate to Bill", passing (row_index, sell_price, unit_cost, quantity).
-    costing_applied = Signal(int, float, float, float)
+    #: Emitted when user clicks "Apply Rate to Bill", passing (row_index, sell_price, unit_cost, quantity, description).
+    costing_applied = Signal(int, float, float, float, str)
     #: Emitted when user clicks "Apply Rate to Bill", passing (row_index, sell_price).
     rate_applied = Signal(int, float)
+    #: Emitted when a barcode material is selected, passing (row_index, detail).
+    material_selected = Signal(int, str)
     #: Emitted whenever costs change.
     values_changed = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, connection: sqlite3.Connection | None = None) -> None:
         super().__init__(parent)
+        self._connection = connection
         self.is_expanded = False
         self._target_row = 0
         self._is_syncing = False
@@ -432,8 +435,12 @@ class JobCostingDrawer(QFrame):
             row_names=("Electricity + Labour", "Others"),
             include_sampling_sub=False,
             include_inventory_picker=True,
+            connection=self._connection,
         )
         sec_barcode.cost_changed.connect(self._recalculate)
+        if hasattr(sec_barcode, "barcode_inventory_picker") and sec_barcode.barcode_inventory_picker:
+            sec_barcode.barcode_inventory_picker.qty_changed.connect(self._on_barcode_qty_changed)
+            sec_barcode.barcode_inventory_picker.item_selected.connect(self._on_barcode_item_selected)
         self._sections["barcode"] = sec_barcode
         body_layout.addWidget(sec_barcode)
 
@@ -476,13 +483,34 @@ class JobCostingDrawer(QFrame):
             }}
         """)
 
+    def _on_barcode_qty_changed(self, qty: float) -> None:
+        if qty > 0:
+            val_str = str(int(qty)) if qty.is_integer() else f"{qty:g}"
+            if self.qty_edit.text() != val_str:
+                self.qty_edit.blockSignals(True)
+                self.qty_edit.setText(val_str)
+                self.qty_edit.blockSignals(False)
+                self._recalculate()
+
+    def _on_barcode_item_selected(self, detail: str) -> None:
+        if detail:
+            self.material_selected.emit(self._target_row, detail)
+
+    def get_selected_description(self) -> str:
+        """Returns the description of the chosen barcode inventory material(s)."""
+        sec = self._sections.get("barcode")
+        if sec and hasattr(sec, "barcode_inventory_picker") and sec.barcode_inventory_picker:
+            return sec.barcode_inventory_picker.get_selected_description()
+        return ""
+
     def _on_apply_rate_clicked(self) -> None:
         qty = self.get_quantity()
         total_cost = self.get_total_cost()
         unit_cost = (total_cost / qty) if qty > 0 else 0.0
         sell_price = self.get_sell_price()
+        desc = self.get_selected_description()
 
-        self.costing_applied.emit(self._target_row, sell_price, unit_cost, qty)
+        self.costing_applied.emit(self._target_row, sell_price, unit_cost, qty, desc)
         if sell_price > 0:
             self.rate_applied.emit(self._target_row, sell_price)
 
@@ -571,6 +599,11 @@ class JobCostingDrawer(QFrame):
 
         self.val_total_cost.setText(f"Rs. {_fmt(total_cost)}")
         self.val_unit_cost.setText(f"Rs. {_fmt(unit_cost)}")
+
+        # Forward sync quantity to barcode picker if present
+        sec = self._sections.get("barcode")
+        if sec and hasattr(sec, "barcode_inventory_picker") and sec.barcode_inventory_picker:
+            sec.barcode_inventory_picker.set_default_qty(qty)
 
         # Automatically push Cost / Unit to active Bill row!
         if unit_cost > 0 and not self._is_syncing:

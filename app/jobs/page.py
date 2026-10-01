@@ -467,11 +467,13 @@ class NewJobPage(QWidget):
         b_layout.addWidget(table_card)
 
         # 3e. Production Costing & Profit Drawer (Starts CLOSED by default)
-        self._costing_drawer = JobCostingDrawer()
+        self._committed_inventory_materials: dict[int, list[tuple[int, float]]] = {}
+        self._costing_drawer = JobCostingDrawer(connection=self._connection, parent=self)
         self._costing_drawer.costing_applied.connect(self._apply_costing_to_bill)
         self._costing_drawer.rate_applied.connect(self._apply_costing_rate_to_bill)
         self._costing_drawer.cost_unit_calculated.connect(self._on_costing_cost_received)
         self._costing_drawer.sell_price_calculated.connect(self._on_costing_sell_price_received)
+        self._costing_drawer.material_selected.connect(self._on_costing_material_selected)
         b_layout.addWidget(self._costing_drawer)
 
         # 4. Actions Row: Save & Preview Buttons --------------------------------
@@ -718,6 +720,16 @@ class NewJobPage(QWidget):
             return
 
         self._table.removeRow(row_idx)
+
+        # Shift committed materials indices down for rows after row_idx
+        new_committed = {}
+        for r, mats in self._committed_inventory_materials.items():
+            if r < row_idx:
+                new_committed[r] = mats
+            elif r > row_idx:
+                new_committed[r - 1] = mats
+        self._committed_inventory_materials = new_committed
+
         self._refresh_sr_numbers()
         self._sync_totals()
 
@@ -741,6 +753,7 @@ class NewJobPage(QWidget):
 
     def clear_table(self) -> None:
         self._is_updating_table = True
+        self._committed_inventory_materials.clear()
         self._table.setRowCount(0)
         self.add_row(focus_desc=False)
         self._is_updating_table = False
@@ -887,17 +900,35 @@ class NewJobPage(QWidget):
                 rate_w.blockSignals(False)
                 self._sync_totals()
 
-    def _apply_costing_to_bill(self, row_idx: int, sell_price: float, unit_cost: float, quantity: float) -> None:
-        """Apply all costing values (Quantity, Cost Price, Sell Rate) directly to the target bill row."""
+    def _on_costing_material_selected(self, row_idx: int, detail: str) -> None:
+        """When user selects a material from barcode inventory, prefill line description if currently blank."""
+        if 0 <= row_idx < self._table.rowCount():
+            desc_w = self._table.cellWidget(row_idx, 1)
+            if isinstance(desc_w, QLineEdit) and not desc_w.text().strip() and detail:
+                desc_w.setText(capitalize_words(detail))
+
+    def _apply_costing_to_bill(
+        self,
+        row_idx: int,
+        sell_price: float,
+        unit_cost: float,
+        quantity: float,
+        description: str = "",
+    ) -> None:
+        """Apply all costing values (Description, Quantity, Cost Price, Sell Rate) directly to the target bill row."""
         if self._table.rowCount() == 0:
             self.add_row(focus_desc=False)
         target_row = row_idx if 0 <= row_idx < self._table.rowCount() else 0
 
         self._is_updating_table = True
 
+        desc_w = self._table.cellWidget(target_row, 1)
         qty_w = self._table.cellWidget(target_row, 2)
         cost_w = self._table.cellWidget(target_row, 3)
         rate_w = self._table.cellWidget(target_row, 4)
+
+        if isinstance(desc_w, QLineEdit) and description:
+            desc_w.setText(capitalize_words(description))
 
         if isinstance(qty_w, QDoubleSpinBox) and quantity > 0:
             qty_w.setValue(quantity)
@@ -908,6 +939,12 @@ class NewJobPage(QWidget):
 
         self._is_updating_table = False
         self._sync_totals()
+
+        # Capture used barcode inventory materials BEFORE clearing drawer
+        if hasattr(self, "_costing_drawer") and self._costing_drawer:
+            used_mats = self._costing_drawer.get_selected_inventory_materials()
+            if used_mats:
+                self._committed_inventory_materials[target_row] = used_mats
 
         # Erase everything in costing sheet once applied so it is fresh for the next item
         if hasattr(self, "_costing_drawer"):
@@ -1027,17 +1064,46 @@ class NewJobPage(QWidget):
             QMessageBox.critical(self, "Error Saving Invoice", str(exc))
             return
 
-        # Deduct barcode inventory stock for any materials used in costing
-        if hasattr(self, "_costing_drawer") and self._costing_drawer:
-            used_materials = self._costing_drawer.get_selected_inventory_materials()
-            if used_materials:
-                from app.db.barcode_inventory import deduct_barcode_inventory_stock
-                for item_id, used_qty in used_materials:
+        # Deduct barcode inventory stock for any materials used in costing or in bill lines
+        try:
+            from app.db.barcode_inventory import deduct_barcode_inventory_stock, list_barcode_inventory
+
+            deductions_by_id: dict[int, float] = {}
+
+            # 1. From committed materials via costing drawer 'Apply'
+            for mat_list in self._committed_inventory_materials.values():
+                for item_id, qty in mat_list:
+                    deductions_by_id[item_id] = deductions_by_id.get(item_id, 0.0) + float(qty)
+
+            # 2. If no committed drawer materials, check currently active costing drawer
+            if not deductions_by_id and hasattr(self, "_costing_drawer") and self._costing_drawer:
+                for item_id, qty in self._costing_drawer.get_selected_inventory_materials():
+                    deductions_by_id[item_id] = deductions_by_id.get(item_id, 0.0) + float(qty)
+
+            # 3. For any bill line description matching an inventory item (case-insensitive)
+            all_inv_items = list_barcode_inventory(self._connection)
+            inv_by_desc = {item.detail.strip().lower(): item for item in all_inv_items}
+            for line_item in lines:
+                desc_clean = line_item["description"].strip().lower()
+                if desc_clean in inv_by_desc:
+                    inv_obj = inv_by_desc[desc_clean]
+                    # If this item was not already accounted for by costing drawer, deduct the bill line quantity
+                    if inv_obj.id not in deductions_by_id:
+                        deductions_by_id[inv_obj.id] = float(line_item["quantity"])
+
+            # Execute stock deduction
+            for item_id, used_qty in deductions_by_id.items():
+                if used_qty > 0:
                     try:
                         deduct_barcode_inventory_stock(self._connection, item_id, used_qty)
                     except Exception as err:
                         print(f"Warning: could not deduct inventory item {item_id}: {err}")
+
+            self._committed_inventory_materials.clear()
+            if hasattr(self, "_costing_drawer") and self._costing_drawer:
                 self._costing_drawer.clear_inventory_materials()
+        except Exception as inv_err:
+            print(f"Warning: barcode inventory deduction encountered error: {inv_err}")
 
         # Automatically export PDF to the designated PDF export folder
         pdf_path_obj = None
@@ -1080,6 +1146,7 @@ class NewJobPage(QWidget):
         self.clear_table()
         if hasattr(self, "_costing_drawer"):
             self._costing_drawer.clear()
+        self._committed_inventory_materials.clear()
         self.load_parties()
         self._party_combo.setCurrentIndex(0)
         self._bill_container.setVisible(False)

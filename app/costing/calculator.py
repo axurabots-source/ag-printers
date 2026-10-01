@@ -422,6 +422,7 @@ class CollapsibleSection(QFrame):
         include_sampling_sub: bool = False,
         include_inventory_picker: bool = False,
         parent=None,
+        connection: sqlite3.Connection | None = None,
     ) -> None:
         super().__init__(parent)
         self.key = key
@@ -552,7 +553,7 @@ class CollapsibleSection(QFrame):
         self.barcode_inventory_picker = None
         if include_inventory_picker and key == "barcode":
             from app.costing.barcode_inventory_picker import BarcodeInventoryCostingWidget
-            self.barcode_inventory_picker = BarcodeInventoryCostingWidget()
+            self.barcode_inventory_picker = BarcodeInventoryCostingWidget(connection=connection)
             self.barcode_inventory_picker.cost_changed.connect(lambda: self.cost_changed.emit())
             body_layout.addWidget(self.barcode_inventory_picker)
 
