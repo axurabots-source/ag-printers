@@ -198,7 +198,7 @@ class PartiesListView(QWidget):
         selected_id = self.selected_party_id()
         self._table.setRowCount(0)
 
-        bold = QFont()
+        bold = QFont(self.font())
         bold.setBold(True)
         for party in self._rows:
             row = self._table.rowCount()

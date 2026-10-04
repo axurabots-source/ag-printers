@@ -627,7 +627,7 @@ class DashboardPage(QWidget):
         recent_bills = get_recent_bills(self._connection, limit=10)
         self._bills_table.setRowCount(0)
 
-        bold = QFont()
+        bold = QFont(self.font())
         bold.setBold(True)
 
         for bill in recent_bills:

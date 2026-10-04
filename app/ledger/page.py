@@ -323,7 +323,7 @@ class LedgerPage(QWidget):
             date_to=date_to,
         )
 
-        bold = QFont()
+        bold = QFont(self.font())
         bold.setBold(True)
 
         self._table.setRowCount(0)
