@@ -20,6 +20,8 @@ Design Highlights:
 
 from __future__ import annotations
 
+import sqlite3
+
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,

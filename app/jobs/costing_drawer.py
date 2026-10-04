@@ -11,6 +11,8 @@ Features:
 
 from __future__ import annotations
 
+import sqlite3
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor, QIntValidator
 from PySide6.QtWidgets import (
