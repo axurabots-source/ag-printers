@@ -9,19 +9,21 @@ from __future__ import annotations
 
 import sqlite3
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QCompleter,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QTableWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.db.barcode_inventory import BarcodeInventoryItem, list_barcode_inventory
@@ -163,6 +165,206 @@ class BarcodeMaterialRow:
         return round(self.qty_spin.value() * self.rate_spin.value(), 2)
 
 
+class SearchableProductSelect(QFrame):
+    """Modern Select2-style dropdown with a search box built directly inside the dropdown popup."""
+
+    item_selected = Signal(object)  # Emits BarcodeInventoryItem | None
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._items: list[BarcodeInventoryItem] = []
+        self._current_item: BarcodeInventoryItem | None = None
+
+        self.setObjectName("SearchableDropdownTrigger")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(30)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet("""
+            QFrame#SearchableDropdownTrigger {
+                background-color: #FFFFFF;
+                border: 1.5px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 0px 8px;
+            }
+            QFrame#SearchableDropdownTrigger:hover {
+                border-color: #3B82F6;
+                background-color: #F8FAFC;
+            }
+        """)
+
+        h_layout = QHBoxLayout(self)
+        h_layout.setContentsMargins(6, 2, 6, 2)
+        h_layout.setSpacing(6)
+
+        self._lbl_text = QLabel("Select material from inventory...")
+        self._lbl_text.setStyleSheet("font-size: 11px; font-weight: 600; color: #0F172A; border: none; background: transparent;")
+        h_layout.addWidget(self._lbl_text, 1)
+
+        self._lbl_arrow = QLabel("▼")
+        self._lbl_arrow.setStyleSheet("font-size: 10px; color: #64748B; border: none; background: transparent;")
+        h_layout.addWidget(self._lbl_arrow)
+
+        # Popup Window
+        self._popup = QFrame(self, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self._popup.setObjectName("SearchableDropdownPopup")
+        self._popup.setStyleSheet("""
+            QFrame#SearchableDropdownPopup {
+                background-color: #FFFFFF;
+                border: 1.5px solid #CBD5E1;
+                border-radius: 8px;
+            }
+        """)
+
+        p_layout = QVBoxLayout(self._popup)
+        p_layout.setContentsMargins(8, 8, 8, 8)
+        p_layout.setSpacing(6)
+
+        # Search box directly inside the popup!
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("🔍 Search products (e.g. 50x25, wax, ribbon)...")
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #F8FAFC;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 5px 8px;
+                font-size: 11.5px;
+                color: #0F172A;
+            }
+            QLineEdit:focus {
+                background-color: #FFFFFF;
+                border: 1.5px solid #2563EB;
+            }
+        """)
+        self._search_input.setFixedHeight(30)
+        self._search_input.textChanged.connect(self._filter_items)
+        self._search_input.returnPressed.connect(self._select_top_item)
+        p_layout.addWidget(self._search_input)
+
+        self._list_widget = QListWidget()
+        self._list_widget.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #E2E8F0;
+                background-color: #FFFFFF;
+                border-radius: 6px;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 6px 8px;
+                border-bottom: 1px solid #F1F5F9;
+            }
+            QListWidget::item:hover {
+                background-color: #EFF6FF;
+            }
+            QListWidget::item:selected {
+                background-color: #DBEAFE;
+                color: #1E40AF;
+            }
+        """)
+        self._list_widget.itemClicked.connect(self._on_list_item_clicked)
+        p_layout.addWidget(self._list_widget)
+
+    def mousePressEvent(self, event) -> None:
+        self.show_popup()
+        super().mousePressEvent(event)
+
+    def show_popup(self) -> None:
+        if not self._items:
+            return
+        pos = self.mapToGlobal(QPoint(0, self.height() + 2))
+        self._popup.setFixedWidth(max(self.width(), 380))
+        self._popup.setFixedHeight(260)
+        self._popup.move(pos)
+        self._popup.show()
+        self._search_input.clear()
+        self._filter_items("")
+        self._search_input.setFocus()
+
+    def set_items(self, items: list[BarcodeInventoryItem], preserve_id: int | None = None) -> None:
+        self._items = items
+        target_item = None
+        if preserve_id is not None:
+            target_item = next((it for it in items if it.id == preserve_id), None)
+        if target_item is None and items:
+            target_item = items[0]
+        self.set_current_item(target_item)
+
+    def set_current_item(self, item: BarcodeInventoryItem | None) -> None:
+        self._current_item = item
+        if item is not None:
+            self._lbl_text.setText(f"{item.detail}  ·  Rs. {item.rate:,.2f}  ·  Stock: {item.quantity:,.0f}")
+            self.setToolTip(f"In Stock: {item.quantity:,.0f} units | Unit Rate: Rs. {item.rate:,.2f}")
+        else:
+            self._lbl_text.setText("No items in Barcode Inventory (Go to Inventory in sidebar)")
+            self.setToolTip("")
+
+    def current_item(self) -> BarcodeInventoryItem | None:
+        return self._current_item
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def currentText(self) -> str:
+        return self._lbl_text.text()
+
+    def currentIndex(self) -> int:
+        if self._current_item is not None:
+            for i, it in enumerate(self._items):
+                if it.id == self._current_item.id:
+                    return i
+        return -1
+
+    def itemText(self, index: int) -> str:
+        if 0 <= index < len(self._items):
+            it = self._items[index]
+            return f"{it.detail}  ·  Rs. {it.rate:,.2f}  ·  Stock: {it.quantity:,.0f}"
+        return ""
+
+    def itemData(self, index: int) -> BarcodeInventoryItem | None:
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def setCurrentIndex(self, index: int) -> None:
+        if 0 <= index < len(self._items):
+            self.set_current_item(self._items[index])
+            self.item_selected.emit(self._items[index])
+
+    def _filter_items(self, text: str) -> None:
+        self._list_widget.clear()
+        q = text.strip().lower()
+        matched = 0
+        for it in self._items:
+            if not q or q in it.detail.lower():
+                w_item = QListWidgetItem()
+                w_item.setData(Qt.ItemDataRole.UserRole, it)
+                w_item.setText(f"{it.detail}\n  ↳ Rate: Rs. {it.rate:,.2f}   |   Stock: {it.quantity:,.0f} units")
+                self._list_widget.addItem(w_item)
+                matched += 1
+
+        if matched == 0:
+            empty_item = QListWidgetItem(f"No products found matching '{text.strip()}'")
+            empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            empty_item.setForeground(Qt.GlobalColor.gray)
+            self._list_widget.addItem(empty_item)
+        elif self._list_widget.count() > 0:
+            self._list_widget.setCurrentRow(0)
+
+    def _select_top_item(self) -> None:
+        if self._list_widget.count() > 0:
+            item = self._list_widget.currentItem() or self._list_widget.item(0)
+            if item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                self._on_list_item_clicked(item)
+
+    def _on_list_item_clicked(self, list_item: QListWidgetItem) -> None:
+        data = list_item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(data, BarcodeInventoryItem):
+            self.set_current_item(data)
+            self._popup.hide()
+            self.item_selected.emit(data)
+
+
 class BarcodeInventoryCostingWidget(QFrame):
     """Component embedded inside Barcode Stickers & Labels costing section.
 
@@ -218,7 +420,7 @@ class BarcodeInventoryCostingWidget(QFrame):
         layout.addLayout(header_row)
 
         # 2. Responsive 2-Tier Selector Controls
-        # Row A: Unified Searchable Material Dropdown (Type to filter or click to pick)
+        # Row A: Unified Material Dropdown (Click to open list with internal search box)
         row_a = QHBoxLayout()
         row_a.setSpacing(8)
 
@@ -226,48 +428,8 @@ class BarcodeInventoryCostingWidget(QFrame):
         lbl_item.setStyleSheet("font-size: 11px; font-weight: 700; color: #475569; border: none; background: transparent;")
         row_a.addWidget(lbl_item)
 
-        self._combo = QComboBox()
-        self._combo.setObjectName("FormInput")
-        self._combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self._combo.setMinimumContentsLength(8)
-        self._combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
-        self._combo.setEditable(True)
-        self._combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        if self._combo.lineEdit():
-            self._combo.lineEdit().setPlaceholderText("Search or choose material from inventory...")
-            self._combo.lineEdit().returnPressed.connect(self._on_combo_return_pressed)
-            self._combo.lineEdit().editingFinished.connect(self._on_combo_editing_finished)
-
-        self._completer = QCompleter(self._combo.model(), self._combo)
-        self._completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self._completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self._completer.activated[str].connect(self._on_completer_item_activated)
-        if self._completer.popup():
-            self._completer.popup().setStyleSheet("""
-                QAbstractItemView {
-                    background-color: #FFFFFF;
-                    border: 1px solid #CBD5E1;
-                    border-radius: 6px;
-                    selection-background-color: #EFF6FF;
-                    selection-color: #1E40AF;
-                    padding: 4px;
-                    font-size: 11px;
-                    font-weight: 600;
-                }
-                QAbstractItemView::item {
-                    min-height: 26px;
-                    padding: 3px 8px;
-                    border-radius: 4px;
-                }
-                QAbstractItemView::item:hover {
-                    background-color: #F1F5F9;
-                }
-            """)
-        self._combo.setCompleter(self._completer)
-        self._combo.setStyleSheet(COMBO_CSS)
-        self._combo.currentIndexChanged.connect(self._on_combo_item_selected)
+        self._combo = SearchableProductSelect(self)
+        self._combo.item_selected.connect(self._on_material_selected)
         row_a.addWidget(self._combo, 1)
 
         layout.addLayout(row_a)
@@ -391,89 +553,29 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._input_qty.blockSignals(False)
 
     def _repopulate_combo(self, preserve_selection: bool = True) -> None:
-        current_id = None
-        if preserve_selection:
-            idx = self._combo.currentIndex()
-            if idx >= 0:
-                cur_item = self._combo.itemData(idx)
-                if isinstance(cur_item, BarcodeInventoryItem):
-                    current_id = cur_item.id
-
-        self._combo.blockSignals(True)
-        self._combo.clear()
-
-        if not self._inventory_items:
-            self._combo.addItem("No items in Barcode Inventory (Go to Inventory in sidebar)", None)
+        cur_id = self._combo.current_item().id if self._combo.current_item() else None
+        self._combo.set_items(self._inventory_items, preserve_id=(cur_id if preserve_selection else None))
+        cur = self._combo.current_item()
+        if cur is not None:
+            self._input_rate.setValue(cur.rate)
+            self._add_btn.setEnabled(True)
+            self.item_selected.emit(cur.detail)
+        else:
             self._input_rate.setValue(0.0)
             self._add_btn.setEnabled(False)
-        else:
-            self._add_btn.setEnabled(True)
-            matched_idx = 0
-            for i, it in enumerate(self._inventory_items):
-                label = f"{it.detail}  ·  Rs. {it.rate:,.2f}  ·  Stock: {it.quantity:,.0f}"
-                self._combo.addItem(label, it)
-                if current_id is not None and it.id == current_id:
-                    matched_idx = i
-
-            self._combo.setCurrentIndex(matched_idx)
-            selected_it = self._combo.itemData(matched_idx)
-            if isinstance(selected_it, BarcodeInventoryItem):
-                self._input_rate.setValue(selected_it.rate)
-                self._combo.setToolTip(f"In Stock: {selected_it.quantity:,.0f} units | Unit Rate: Rs. {selected_it.rate:,.2f}")
-                self.item_selected.emit(selected_it.detail)
-
-        # Keep autocomplete search model updated with newest inventory items
-        if hasattr(self, "_completer") and self._completer:
-            self._completer.setModel(self._combo.model())
-
-        self._combo.blockSignals(False)
 
     def refresh_inventory(self) -> None:
         """Reload available items from barcode_inventory table with updated stock counts."""
         self._inventory_items = list_barcode_inventory(self._connection)
         self._repopulate_combo(preserve_selection=True)
 
-    def _on_completer_item_activated(self, text: str) -> None:
-        """Called when an item is selected from the search autocomplete popup."""
-        idx = self._combo.findText(text)
-        if idx >= 0:
-            self._combo.setCurrentIndex(idx)
-
-    def _on_combo_return_pressed(self) -> None:
-        """Allow hitting Enter in the combo lineEdit to pick the best matching item."""
-        if not self._combo.lineEdit():
-            return
-        typed = self._combo.lineEdit().text().strip().lower()
-        if not typed:
-            return
-        for i in range(self._combo.count()):
-            text = self._combo.itemText(i).lower()
-            if typed in text:
-                self._combo.setCurrentIndex(i)
-                return
-
-    def _on_combo_editing_finished(self) -> None:
-        """Restore valid item text if user typed without selecting."""
-        idx = self._combo.currentIndex()
-        if idx >= 0 and self._combo.lineEdit():
-            expected = self._combo.itemText(idx)
-            current_typed = self._combo.lineEdit().text().strip()
-            if current_typed != expected:
-                matched = self._combo.findText(current_typed)
-                if matched >= 0:
-                    self._combo.setCurrentIndex(matched)
-                else:
-                    self._combo.lineEdit().setText(expected)
-
-    def _on_combo_item_selected(self, index: int) -> None:
-        item = self._combo.itemData(index)
-        if isinstance(item, BarcodeInventoryItem):
+    def _on_material_selected(self, item: BarcodeInventoryItem | None) -> None:
+        if item is not None:
             self._input_rate.setValue(item.rate)
-            self._combo.setToolTip(f"In Stock: {item.quantity:,.0f} units | Unit Rate: Rs. {item.rate:,.2f}")
             self.item_selected.emit(item.detail)
 
     def _add_current_material(self) -> None:
-        item = self._combo.itemData(self._combo.currentIndex())
+        item = self._combo.current_item()
         if not isinstance(item, BarcodeInventoryItem):
             return
 
@@ -552,11 +654,9 @@ class BarcodeInventoryCostingWidget(QFrame):
         """Return the detail of the selected barcode material(s)."""
         if self._rows:
             return ", ".join(r.detail for r in self._rows if r.detail)
-        idx = self._combo.currentIndex()
-        if idx >= 0:
-            item = self._combo.itemData(idx)
-            if isinstance(item, BarcodeInventoryItem) and item.detail:
-                return item.detail
+        item = self._combo.current_item()
+        if isinstance(item, BarcodeInventoryItem) and item.detail:
+            return item.detail
         return ""
 
     def get_selected_materials(self) -> list[tuple[int, float]]:
@@ -564,13 +664,11 @@ class BarcodeInventoryCostingWidget(QFrame):
         if self._rows:
             return [(r.item_id, float(r.qty_spin.value())) for r in self._rows if r.item_id]
 
-        idx = self._combo.currentIndex()
-        if idx >= 0:
-            item = self._combo.itemData(idx)
-            if isinstance(item, BarcodeInventoryItem) and item.id:
-                qty = float(self._input_qty.value())
-                if qty > 0:
-                    return [(item.id, qty)]
+        item = self._combo.current_item()
+        if isinstance(item, BarcodeInventoryItem) and item.id:
+            qty = float(self._input_qty.value())
+            if qty > 0:
+                return [(item.id, qty)]
         return []
 
     def clear(self) -> None:
