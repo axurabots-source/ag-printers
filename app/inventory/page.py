@@ -6,6 +6,7 @@ specifying Detail, Stock Quantity, and Unit Rate, used exclusively in Barcode Co
 
 from __future__ import annotations
 
+from datetime import datetime
 import sqlite3
 
 from PySide6.QtCore import Qt, Signal
@@ -29,6 +30,17 @@ from app.db.barcode_inventory import (
     list_barcode_inventory,
 )
 from app.inventory.dialog import BarcodeItemDialog
+
+
+def _format_timestamp(val: str | None) -> str:
+    """Format timestamp into readable date and time."""
+    if not val:
+        return "-"
+    try:
+        clean = str(val).strip().replace("T", " ")
+        return datetime.fromisoformat(clean).strftime("%d-%b-%Y %I:%M %p")
+    except Exception:
+        return str(val)[:16] if val else "-"
 
 
 class InventoryPage(QWidget):
@@ -110,13 +122,15 @@ class InventoryPage(QWidget):
         t_layout.setSpacing(10)
 
         self._table = QTableWidget()
-        self._table.setColumnCount(6)
+        self._table.setColumnCount(8)
         self._table.setHorizontalHeaderLabels([
             "Sr.",
             "Detail / Item Description",
             "Stock Qty",
             "Unit Rate (Rs.)",
             "Total Value (Rs.)",
+            "Date Added",
+            "Last Updated",
             "Actions",
         ])
         self._table.verticalHeader().setVisible(False)
@@ -147,12 +161,16 @@ class InventoryPage(QWidget):
         h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         h_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         h_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        h_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        h_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
 
-        self._table.setColumnWidth(0, 50)
-        self._table.setColumnWidth(2, 120)
-        self._table.setColumnWidth(3, 140)
-        self._table.setColumnWidth(4, 160)
-        self._table.setColumnWidth(5, 140)
+        self._table.setColumnWidth(0, 45)
+        self._table.setColumnWidth(2, 95)
+        self._table.setColumnWidth(3, 115)
+        self._table.setColumnWidth(4, 125)
+        self._table.setColumnWidth(5, 145)
+        self._table.setColumnWidth(6, 145)
+        self._table.setColumnWidth(7, 130)
 
         t_layout.addWidget(self._table)
         layout.addWidget(table_card, 1)
@@ -239,7 +257,19 @@ class InventoryPage(QWidget):
             val_lbl.setStyleSheet("color: #047857; font-size: 12px; font-weight: 700;")
             self._table.setCellWidget(row, 4, val_lbl)
 
-            # 5. Actions (Edit / Delete)
+            # 5. Date Added
+            created_lbl = QLabel(_format_timestamp(item.created_at))
+            created_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            created_lbl.setStyleSheet("color: #64748B; font-size: 11.5px; font-weight: 500;")
+            self._table.setCellWidget(row, 5, created_lbl)
+
+            # 6. Last Updated
+            updated_lbl = QLabel(_format_timestamp(item.updated_at))
+            updated_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            updated_lbl.setStyleSheet("color: #2563EB; font-size: 11.5px; font-weight: 600;")
+            self._table.setCellWidget(row, 6, updated_lbl)
+
+            # 7. Actions (Edit / Delete)
             act_widget = QWidget()
             act_layout = QHBoxLayout(act_widget)
             act_layout.setContentsMargins(4, 4, 4, 4)
@@ -287,7 +317,7 @@ class InventoryPage(QWidget):
             del_btn.clicked.connect(lambda _, it=item: self._delete_item(it))
             act_layout.addWidget(del_btn)
 
-            self._table.setCellWidget(row, 5, act_widget)
+            self._table.setCellWidget(row, 7, act_widget)
 
     def _open_add_dialog(self) -> None:
         dlg = BarcodeItemDialog(self._connection, parent=self)

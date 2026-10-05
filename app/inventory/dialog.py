@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import sqlite3
 
 from PySide6.QtCore import Qt
@@ -129,6 +130,23 @@ class BarcodeItemDialog(QDialog):
             self._detail_edit.setText(item.detail)
             self._qty_spin.setValue(item.quantity)
             self._rate_spin.setValue(item.rate)
+
+            def _fmt_dt(v: str | None) -> str:
+                if not v:
+                    return "-"
+                try:
+                    clean = str(v).strip().replace("T", " ")
+                    return datetime.fromisoformat(clean).strftime("%d-%b-%Y %I:%M %p")
+                except Exception:
+                    return str(v)[:16] if v else "-"
+
+            created_lbl = QLabel(_fmt_dt(item.created_at))
+            created_lbl.setStyleSheet("font-size: 11.5px; color: #64748B; border: none; background: transparent;")
+            form.addRow(make_label("Date Added"), created_lbl)
+
+            updated_lbl = QLabel(_fmt_dt(item.updated_at))
+            updated_lbl.setStyleSheet("font-size: 11.5px; color: #2563EB; font-weight: 600; border: none; background: transparent;")
+            form.addRow(make_label("Last Updated"), updated_lbl)
 
         self._update_total_preview()
 

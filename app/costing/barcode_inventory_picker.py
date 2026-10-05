@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -208,9 +209,34 @@ class BarcodeInventoryCostingWidget(QFrame):
         layout.addLayout(header_row)
 
         # 2. Responsive 2-Tier Selector Controls
-        # Row A: Material Dropdown
+        # Row A: Search Box + Material Dropdown
         row_a = QHBoxLayout()
-        row_a.setSpacing(6)
+        row_a.setSpacing(8)
+
+        lbl_s = QLabel("🔍 Search:")
+        lbl_s.setStyleSheet("font-size: 11px; font-weight: 700; color: #475569; border: none; background: transparent;")
+        row_a.addWidget(lbl_s)
+
+        self._search_input = QLineEdit()
+        self._search_input.setObjectName("FormInput")
+        self._search_input.setPlaceholderText("Filter items (e.g. 50x25, wax)...")
+        self._search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #FFFFFF;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+                color: #0F172A;
+            }
+            QLineEdit:focus {
+                border: 1.5px solid #2563EB;
+            }
+        """)
+        self._search_input.setFixedHeight(28)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
+        row_a.addWidget(self._search_input, 2)
+
         lbl_item = QLabel("Item:")
         lbl_item.setStyleSheet("font-size: 11px; font-weight: 700; color: #475569; border: none; background: transparent;")
         row_a.addWidget(lbl_item)
@@ -223,7 +249,7 @@ class BarcodeInventoryCostingWidget(QFrame):
         self._combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
         self._combo.setStyleSheet(COMBO_CSS)
         self._combo.currentIndexChanged.connect(self._on_combo_item_selected)
-        row_a.addWidget(self._combo, 1)
+        row_a.addWidget(self._combo, 3)
 
         layout.addLayout(row_a)
 
@@ -345,16 +371,25 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._input_qty.setValue(qty)
             self._input_qty.blockSignals(False)
 
-    def refresh_inventory(self) -> None:
-        """Reload available items from barcode_inventory table with updated stock counts."""
-        current_id = None
-        idx = self._combo.currentIndex()
-        if idx >= 0:
-            cur_item = self._combo.itemData(idx)
-            if isinstance(cur_item, BarcodeInventoryItem):
-                current_id = cur_item.id
+    def _on_search_text_changed(self, text: str) -> None:
+        """Dynamically filter the items displayed in the dropdown based on search query."""
+        self._repopulate_combo(preserve_selection=True, filter_query=text)
 
-        self._inventory_items = list_barcode_inventory(self._connection)
+    def _repopulate_combo(self, preserve_selection: bool = True, filter_query: str = "") -> None:
+        current_id = None
+        if preserve_selection:
+            idx = self._combo.currentIndex()
+            if idx >= 0:
+                cur_item = self._combo.itemData(idx)
+                if isinstance(cur_item, BarcodeInventoryItem):
+                    current_id = cur_item.id
+
+        clean_q = filter_query.strip().lower()
+        items_to_show = [
+            it for it in self._inventory_items
+            if not clean_q or clean_q in it.detail.lower()
+        ]
+
         self._combo.blockSignals(True)
         self._combo.clear()
 
@@ -362,10 +397,14 @@ class BarcodeInventoryCostingWidget(QFrame):
             self._combo.addItem("No items in Barcode Inventory (Go to Inventory in sidebar)", None)
             self._input_rate.setValue(0.0)
             self._add_btn.setEnabled(False)
+        elif not items_to_show:
+            self._combo.addItem(f"No item matching '{filter_query.strip()}'", None)
+            self._input_rate.setValue(0.0)
+            self._add_btn.setEnabled(False)
         else:
             self._add_btn.setEnabled(True)
             matched_idx = 0
-            for i, it in enumerate(self._inventory_items):
+            for i, it in enumerate(items_to_show):
                 label = f"{it.detail}  ·  Rs. {it.rate:,.2f}  ·  Stock: {it.quantity:,.0f}"
                 self._combo.addItem(label, it)
                 if current_id is not None and it.id == current_id:
@@ -375,8 +414,15 @@ class BarcodeInventoryCostingWidget(QFrame):
             selected_it = self._combo.itemData(matched_idx)
             if isinstance(selected_it, BarcodeInventoryItem):
                 self._input_rate.setValue(selected_it.rate)
+                self.item_selected.emit(selected_it.detail)
 
         self._combo.blockSignals(False)
+
+    def refresh_inventory(self) -> None:
+        """Reload available items from barcode_inventory table with updated stock counts."""
+        self._inventory_items = list_barcode_inventory(self._connection)
+        q = self._search_input.text() if hasattr(self, "_search_input") else ""
+        self._repopulate_combo(preserve_selection=True, filter_query=q)
 
     def _on_combo_item_selected(self, index: int) -> None:
         item = self._combo.itemData(index)
@@ -492,6 +538,10 @@ class BarcodeInventoryCostingWidget(QFrame):
         self._input_qty.blockSignals(True)
         self._input_qty.setValue(1.0)
         self._input_qty.blockSignals(False)
+        if hasattr(self, "_search_input"):
+            self._search_input.blockSignals(True)
+            self._search_input.clear()
+            self._search_input.blockSignals(False)
         self.refresh_inventory()
         self._on_row_changed()
 

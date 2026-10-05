@@ -44,6 +44,10 @@ class JobCostingDrawer(QFrame):
     rate_applied = Signal(int, float)
     #: Emitted when a barcode material is selected, passing (row_index, detail).
     material_selected = Signal(int, str)
+    #: Emitted when user selects a row target from the drawer combo.
+    row_selected = Signal(int)
+    #: Emitted when user selects '+ Add New Line...' from the drawer combo.
+    new_line_requested = Signal()
     #: Emitted whenever costs change.
     values_changed = Signal()
 
@@ -519,27 +523,46 @@ class JobCostingDrawer(QFrame):
             self.rate_applied.emit(self._target_row, sell_price)
 
     def _on_combo_index_changed(self, index: int) -> None:
+        if self._is_syncing:
+            return
         row_idx = self.item_combo.currentData()
-        if row_idx is not None and not self._is_syncing:
+        if row_idx is None:
+            return
+        if row_idx == -1:
+            self.new_line_requested.emit()
+        else:
             self._target_row = int(row_idx)
+            self.row_selected.emit(self._target_row)
 
     def update_item_list(self, items: list[dict]) -> None:
-        """Refresh the combo box list of bill items."""
+        """Refresh the combo box list of bill items, preserving selection even for blank lines."""
+        prev_target = self._target_row
         self._is_syncing = True
         self.item_combo.blockSignals(True)
         self.item_combo.clear()
 
+        selected_combo_idx = -1
         for idx, it in enumerate(items):
-            desc = it.get("description", "").strip() or f"Line {idx + 1}"
+            r_idx = it.get("row_index", idx)
+            raw_desc = it.get("description", "").strip()
             qty = it.get("quantity", 0.0)
-            self.item_combo.addItem(f"Line {idx + 1}: {desc} ({qty:g} pcs)", idx)
+            if raw_desc:
+                label = f"Line {r_idx + 1}: {raw_desc} ({qty:g} pcs)" if qty > 0 else f"Line {r_idx + 1}: {raw_desc}"
+            else:
+                label = f"Line {r_idx + 1}: (New Item / Blank)"
+            self.item_combo.addItem(label, r_idx)
+            if r_idx == prev_target:
+                selected_combo_idx = self.item_combo.count() - 1
 
-        # Restore target row if valid
-        if 0 <= self._target_row < len(items):
-            self.item_combo.setCurrentIndex(self._target_row)
+        # Option to create and jump to a fresh line directly from costing
+        self.item_combo.addItem("+ Add New Line...", -1)
+
+        if selected_combo_idx >= 0:
+            self.item_combo.setCurrentIndex(selected_combo_idx)
+            self._target_row = prev_target
         elif items:
-            self._target_row = 0
             self.item_combo.setCurrentIndex(0)
+            self._target_row = items[0].get("row_index", 0)
 
         self.item_combo.blockSignals(False)
         self._is_syncing = False
@@ -547,10 +570,12 @@ class JobCostingDrawer(QFrame):
     def sync_from_row(self, row_idx: int, desc: str, qty: float, sell_rate: float, cost_price: float = 0.0) -> None:
         """Sync when user selects or edits a specific row in the bill table."""
         self._target_row = row_idx
-        if 0 <= row_idx < self.item_combo.count():
-            self.item_combo.blockSignals(True)
-            self.item_combo.setCurrentIndex(row_idx)
-            self.item_combo.blockSignals(False)
+        for i in range(self.item_combo.count()):
+            if self.item_combo.itemData(i) == row_idx:
+                self.item_combo.blockSignals(True)
+                self.item_combo.setCurrentIndex(i)
+                self.item_combo.blockSignals(False)
+                break
 
         if qty > 0 and self.qty_edit.text() != str(int(qty)):
             self.qty_edit.blockSignals(True)

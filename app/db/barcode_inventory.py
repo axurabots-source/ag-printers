@@ -82,8 +82,8 @@ def create_barcode_inventory_item(
 ) -> int:
     """Insert a new barcode inventory item."""
     sql = """
-        INSERT INTO barcode_inventory (detail, quantity, rate)
-        VALUES (?, ?, ?)
+        INSERT INTO barcode_inventory (detail, quantity, rate, created_at, updated_at)
+        VALUES (?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     """
     cursor = connection.execute(sql, (detail.strip(), max(0.0, float(quantity)), max(0.0, float(rate))))
     connection.commit()

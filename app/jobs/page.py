@@ -474,6 +474,8 @@ class NewJobPage(QWidget):
         self._costing_drawer.cost_unit_calculated.connect(self._on_costing_cost_received)
         self._costing_drawer.sell_price_calculated.connect(self._on_costing_sell_price_received)
         self._costing_drawer.material_selected.connect(self._on_costing_material_selected)
+        self._costing_drawer.row_selected.connect(self._on_costing_row_selected)
+        self._costing_drawer.new_line_requested.connect(self._on_costing_add_new_line)
         b_layout.addWidget(self._costing_drawer)
 
         # 4. Actions Row: Save & Preview Buttons --------------------------------
@@ -833,13 +835,14 @@ class NewJobPage(QWidget):
                 total_cost += line_cost
                 if cost_p > 0:
                     total_profit += line_total_profit
-                items_for_drawer.append({
-                    "row_index": r,
-                    "description": desc,
-                    "quantity": qty,
-                    "cost_price": cost_p,
-                    "rate": rate_p,
-                })
+
+            items_for_drawer.append({
+                "row_index": r,
+                "description": desc,
+                "quantity": qty,
+                "cost_price": cost_p,
+                "rate": rate_p,
+            })
 
         # Update CRM metric cards
         self._metric_items_val.setText(f"{total_items} Items")
@@ -910,6 +913,33 @@ class NewJobPage(QWidget):
             if isinstance(desc_w, QLineEdit) and not desc_w.text().strip() and detail:
                 desc_w.setText(capitalize_words(detail))
 
+    def _on_costing_row_selected(self, row_idx: int) -> None:
+        """Called when user selects a line directly from the costing sheet dropdown."""
+        if 0 <= row_idx < self._table.rowCount():
+            self._table.blockSignals(True)
+            self._table.setCurrentCell(row_idx, 1)
+            self._table.blockSignals(False)
+
+            desc_w = self._table.cellWidget(row_idx, 1)
+            qty_w = self._table.cellWidget(row_idx, 2)
+            cost_w = self._table.cellWidget(row_idx, 3)
+            rate_w = self._table.cellWidget(row_idx, 4)
+            desc = desc_w.text().strip() if isinstance(desc_w, QLineEdit) else ""
+            qty = qty_w.value() if isinstance(qty_w, QDoubleSpinBox) else 0.0
+            cost_p = cost_w.value() if isinstance(cost_w, QDoubleSpinBox) else 0.0
+            rate_p = rate_w.value() if isinstance(rate_w, QDoubleSpinBox) else 0.0
+
+            if hasattr(self, "_costing_drawer") and self._costing_drawer:
+                self._costing_drawer.sync_from_row(row_idx, desc, qty, rate_p, cost_p)
+
+    def _on_costing_add_new_line(self) -> None:
+        """Called when '+ Add New Line...' is chosen from the costing drawer combo."""
+        self.add_row(focus_desc=True)
+        new_row = self._table.rowCount() - 1
+        self._table.setCurrentCell(new_row, 1)
+        if hasattr(self, "_costing_drawer") and self._costing_drawer:
+            self._costing_drawer.sync_from_row(new_row, "", 0.0, 0.0, 0.0)
+
     def _apply_costing_to_bill(
         self,
         row_idx: int,
@@ -941,7 +971,7 @@ class NewJobPage(QWidget):
             rate_w.setValue(sell_price)
 
         self._is_updating_table = False
-        self._sync_totals()
+        self._on_row_data_changed()
 
         # Capture used barcode inventory materials BEFORE clearing drawer
         if hasattr(self, "_costing_drawer") and self._costing_drawer:
@@ -964,7 +994,7 @@ class NewJobPage(QWidget):
         rate_w = self._table.cellWidget(target_row, 4)
         if isinstance(rate_w, QDoubleSpinBox):
             rate_w.setValue(price)
-        self._sync_totals()
+        self._on_row_data_changed()
 
     def _collect_lines(self) -> list[dict[str, Any]]:
         """Collect non-empty line items, ignoring empty trailing buffer rows."""
