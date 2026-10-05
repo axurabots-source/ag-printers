@@ -33,14 +33,14 @@ from app.inventory.dialog import BarcodeItemDialog
 
 
 def _format_timestamp(val: str | None) -> str:
-    """Format timestamp into readable date and time."""
+    """Format timestamp into readable date only."""
     if not val:
         return "-"
     try:
         clean = str(val).strip().replace("T", " ")
-        return datetime.fromisoformat(clean).strftime("%d-%b-%Y %I:%M %p")
+        return datetime.fromisoformat(clean).strftime("%d-%b-%Y")
     except Exception:
-        return str(val)[:16] if val else "-"
+        return str(val)[:10] if val else "-"
 
 
 class InventoryPage(QWidget):
@@ -168,8 +168,8 @@ class InventoryPage(QWidget):
         self._table.setColumnWidth(2, 95)
         self._table.setColumnWidth(3, 115)
         self._table.setColumnWidth(4, 125)
-        self._table.setColumnWidth(5, 145)
-        self._table.setColumnWidth(6, 145)
+        self._table.setColumnWidth(5, 115)
+        self._table.setColumnWidth(6, 115)
         self._table.setColumnWidth(7, 130)
 
         t_layout.addWidget(self._table)

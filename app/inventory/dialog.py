@@ -136,9 +136,9 @@ class BarcodeItemDialog(QDialog):
                     return "-"
                 try:
                     clean = str(v).strip().replace("T", " ")
-                    return datetime.fromisoformat(clean).strftime("%d-%b-%Y %I:%M %p")
+                    return datetime.fromisoformat(clean).strftime("%d-%b-%Y")
                 except Exception:
-                    return str(v)[:16] if v else "-"
+                    return str(v)[:10] if v else "-"
 
             created_lbl = QLabel(_fmt_dt(item.created_at))
             created_lbl.setStyleSheet("font-size: 11.5px; color: #64748B; border: none; background: transparent;")
