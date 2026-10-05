@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from pathlib import Path
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
 
 from app.db import create_connection, initialize_database
@@ -15,9 +15,24 @@ from app.ui.theme import APP_STYLESHEET
 
 def run() -> int:
     """Start the application and return its exit code."""
+    # Ensure Windows taskbar displays the custom application icon
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("axurabots.agprinters.app.1.0")
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     app.setApplicationName("AG Printers")
     app.setOrganizationName("AG Printers")
+
+    # Set application icon (Taskbar, system tray, window headers)
+    icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.png"
+    if not icon_path.exists():
+        icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     # Load custom modern typeface (Plus Jakarta Sans)
     font_path = Path(__file__).resolve().parent / "ui" / "fonts" / "PlusJakartaSans.ttf"

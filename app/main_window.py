@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from pathlib import Path
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QMainWindow,
@@ -36,6 +38,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AG Printers")
         self.resize(1280, 800)
         self.setMinimumSize(1024, 640)
+
+        # Set window icon
+        icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.png"
+        if not icon_path.exists():
+            icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         central = QWidget()
         central.setObjectName("Central")

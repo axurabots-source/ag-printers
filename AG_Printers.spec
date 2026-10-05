@@ -5,7 +5,7 @@ from pathlib import Path
 block_cipher = None
 
 datas = [
-    ('app/assets/ag_logo.jpg', 'app/assets'),
+    ('app/assets', 'app/assets'),
     ('app/ui/assets', 'app/ui/assets'),
     ('app/ui/fonts', 'app/ui/fonts'),
 ]
@@ -61,6 +61,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='app/assets/app_icon.ico',
 )
 
 coll = COLLECT(
