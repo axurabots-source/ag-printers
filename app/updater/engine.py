@@ -91,6 +91,12 @@ def apply_update(
     project_root_str = str(PROJECT_ROOT)
     source_dir_str = str(source_dir)
 
+    is_frozen = getattr(sys, "frozen", False)
+    if is_frozen:
+        restart_cmd = f'start "" "{python_exe}"'
+    else:
+        restart_cmd = f'start "" "{python_exe}" "{project_root_str}\\run.py"'
+
     bat_content = f"""@echo off
 title AG Printers Updater
 chcp 65001 >nul
@@ -108,7 +114,7 @@ robocopy "{source_dir_str}" "{project_root_str}" /E /XD "data" ".venv" ".git" "_
 
 echo Update applied successfully!
 echo Restarting AG Printers...
-start "" "{python_exe}" "{project_root_str}\\run.py"
+{restart_cmd}
 
 :: Cleanup self
 (goto) 2>nul & del "%~f0"
