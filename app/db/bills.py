@@ -342,6 +342,113 @@ def create_bill(
     return bill_id
 
 
+def update_bill(
+    connection: sqlite3.Connection,
+    bill_id: int,
+    party_id: int,
+    po_id: int | None = None,
+    po_number: str = "",
+    job_number: str = "",
+    customer_po: str = "",
+    bill_number: str = "",
+    gate_pass_number: str = "",
+    bill_date: str = "",
+    gate_pass_date: str = "",
+    lines: Sequence[tuple[str, float, float] | tuple[str, float, float, float]] = (),
+    po_item_ids: Sequence[int | None] = (),
+    notes: str = "",
+    production_cost: float = 0.0,
+    profit: float = 0.0,
+    pdf_path: str = "",
+) -> None:
+    """Update an existing bill, its line items, and linked gate pass."""
+    prepared = []
+    for idx, line in enumerate(lines):
+        item_id = po_item_ids[idx] if idx < len(po_item_ids) else None
+        if len(line) == 4:
+            desc, quantity, price, cost = line  # type: ignore[misc]
+        else:
+            desc, quantity, price = line  # type: ignore[misc]
+            cost = 0.0
+        prepared.append((item_id, str(desc).strip(), float(quantity), float(price), float(cost)))
+
+    total = round(sum(quantity * price for _, _, quantity, price, _ in prepared), 2)
+    number = str(bill_number).strip()
+    date = str(bill_date).strip()
+    challan_num = str(gate_pass_number).strip() or str(number)
+
+    try:
+        connection.execute(
+            """
+            UPDATE bills
+            SET bill_number = ?,
+                bill_date = ?,
+                party_id = ?,
+                po_id = ?,
+                po_number = ?,
+                job_number = ?,
+                customer_po = ?,
+                total_amount = ?,
+                production_cost = ?,
+                profit = ?,
+                notes = ?,
+                pdf_path = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                number,
+                date,
+                party_id,
+                po_id,
+                str(po_number).strip(),
+                str(job_number).strip(),
+                str(customer_po).strip(),
+                total,
+                float(production_cost or 0.0),
+                float(profit or 0.0),
+                str(notes).strip(),
+                str(pdf_path).strip(),
+                bill_id,
+            ),
+        )
+
+        connection.execute("DELETE FROM bill_items WHERE bill_id = ?", (bill_id,))
+        connection.executemany(
+            "INSERT INTO bill_items (bill_id, po_item_id, description, quantity, rate, cost_price)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (bill_id, item_id, desc, quantity, price, cost)
+                for item_id, desc, quantity, price, cost in prepared
+            ],
+        )
+
+        # Update or insert gate pass if missing
+        gp_exists = connection.execute("SELECT 1 FROM gate_passes WHERE bill_id = ?", (bill_id,)).fetchone()
+        if gp_exists:
+            connection.execute(
+                """
+                UPDATE gate_passes
+                SET gate_pass_number = ?,
+                    gate_pass_date = ?,
+                    customer_po = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE bill_id = ?
+                """,
+                (challan_num, str(gate_pass_date).strip() or date, str(customer_po).strip(), bill_id),
+            )
+        else:
+            connection.execute(
+                "INSERT INTO gate_passes (gate_pass_number, gate_pass_date, bill_id, customer_po)"
+                " VALUES (?, ?, ?, ?)",
+                (challan_num, str(gate_pass_date).strip() or date, bill_id, str(customer_po).strip()),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
 def update_bill_pdf_path(connection: sqlite3.Connection, bill_id: int, pdf_path: str) -> None:
     """Record or update the saved PDF file path for a bill."""
     connection.execute(

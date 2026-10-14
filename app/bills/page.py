@@ -21,6 +21,8 @@ class BillsPage(QWidget):
     list_shown = Signal()
     #: Emitted when user clicks New Bill to open New Job workspace.
     new_requested = Signal()
+    #: Emitted when user clicks Edit Invoice.
+    edit_requested = Signal(int)
 
     def __init__(self, connection: sqlite3.Connection, parent=None) -> None:
         super().__init__(parent)
@@ -39,12 +41,16 @@ class BillsPage(QWidget):
         layout.addWidget(self._stack)
 
         self._list.new_requested.connect(self._new_bill)
+        self._list.edit_requested.connect(self.edit_requested.emit)
         self._list.delete_requested.connect(self._delete_bill)
         self._list.open_requested.connect(self.open_bill)
         self._document.back_requested.connect(self.reset_to_list)
 
         self._challan_button = self._document.add_action(
             "Open Gate Pass", self._open_current_challan
+        )
+        self._edit_button = self._document.add_action(
+            "Edit Invoice", self._edit_current
         )
         self._delete_button = self._document.add_action(
             "Delete Invoice", self._delete_current, danger=True
@@ -95,6 +101,10 @@ class BillsPage(QWidget):
         """Show the challan of the document currently on screen."""
         if self._bill is not None:
             self.open_challan(self._bill.id)
+
+    def _edit_current(self) -> None:
+        if self._bill is not None:
+            self.edit_requested.emit(self._bill.id)
 
     def _delete_current(self) -> None:
         if self._bill is not None:

@@ -95,6 +95,8 @@ class BillsListView(QWidget):
 
     #: Emitted when the user clicks "+ New Bill".
     new_requested = Signal()
+    #: Emitted when user clicks to edit a bill in NewJob workspace.
+    edit_requested = Signal(int)
     #: Emitted with the bill id when Delete is clicked.
     delete_requested = Signal(int)
     #: Emitted with the bill id when a row is double clicked or opened.
@@ -109,7 +111,7 @@ class BillsListView(QWidget):
         "Total",
         "Profit",
         "Gate Pass",
-        "PDF",
+        "Actions",
     )
 
     def __init__(self, connection: sqlite3.Connection, parent=None) -> None:
@@ -132,6 +134,30 @@ class BillsListView(QWidget):
         self._search.setMinimumWidth(240)
         self._search.textChanged.connect(self.refresh)
 
+        self._edit_button = QPushButton("Edit Invoice")
+        self._edit_button.setObjectName("PrimaryButton")
+        self._edit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0284c7;
+                border: 1px solid #0369a1;
+                border-radius: 8px;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 7px 16px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            QPushButton:disabled {
+                background-color: #F1F5F9;
+                color: #94A3B8;
+                border: 1px solid #CBD5E1;
+            }
+        """)
+        self._edit_button.setEnabled(False)
+        self._edit_button.clicked.connect(self._emit_edit)
+
         self._delete_button = QPushButton("Delete Invoice")
         self._delete_button.setObjectName("DangerButton")
         self._delete_button.setStyleSheet(DANGER_BTN_STYLE)
@@ -139,6 +165,7 @@ class BillsListView(QWidget):
         self._delete_button.clicked.connect(self._emit_delete)
 
         row1.addWidget(self._search, 1)
+        row1.addWidget(self._edit_button)
         row1.addWidget(self._delete_button)
         layout.addLayout(row1)
 
@@ -242,8 +269,8 @@ class BillsListView(QWidget):
         self._table.setColumnWidth(4, 55)   # Items
         self._table.setColumnWidth(5, 115)  # Total Amount
         self._table.setColumnWidth(6, 105)  # Profit
-        self._table.setColumnWidth(7, 130)  # Gate Pass No
-        self._table.setColumnWidth(8, 90)   # PDF button
+        self._table.setColumnWidth(7, 125)  # Gate Pass No
+        self._table.setColumnWidth(8, 155)  # Actions (Edit + Open PDF)
 
         self._table.itemSelectionChanged.connect(self._sync_selection)
         self._table.cellDoubleClicked.connect(lambda _r, _c: self._open_selected())
@@ -361,6 +388,27 @@ class BillsListView(QWidget):
             gp_item.setToolTip(bill.gate_pass_number or "No Gate Pass")
             self._table.setItem(row, 7, gp_item)
 
+            edit_btn = QPushButton("Edit")
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.setStyleSheet("""
+                QPushButton {
+                    background: #2563eb;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    font-weight: 600;
+                    font-size: 11px;
+                }
+                QPushButton:hover {
+                    background: #1d4ed8;
+                }
+                QPushButton:pressed {
+                    background: #1e40af;
+                }
+            """)
+            edit_btn.clicked.connect(lambda _checked=False, bid=bill.id: self.edit_requested.emit(bid))
+
             pdf_btn = QPushButton("Open PDF")
             pdf_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             pdf_btn.setStyleSheet("""
@@ -369,7 +417,7 @@ class BillsListView(QWidget):
                     color: #ffffff;
                     border: none;
                     border-radius: 4px;
-                    padding: 5px 12px;
+                    padding: 5px 10px;
                     font-weight: 600;
                     font-size: 11px;
                 }
@@ -384,7 +432,9 @@ class BillsListView(QWidget):
             btn_container = QWidget()
             btn_layout = QHBoxLayout(btn_container)
             btn_layout.setContentsMargins(4, 4, 4, 4)
+            btn_layout.setSpacing(6)
             btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            btn_layout.addWidget(edit_btn)
             btn_layout.addWidget(pdf_btn)
             self._table.setCellWidget(row, 8, btn_container)
 
@@ -411,7 +461,14 @@ class BillsListView(QWidget):
     # -- internals -----------------------------------------------------
 
     def _sync_selection(self) -> None:
-        self._delete_button.setEnabled(self.selected_bill_id() is not None)
+        has_sel = (self.selected_bill_id() is not None)
+        self._delete_button.setEnabled(has_sel)
+        self._edit_button.setEnabled(has_sel)
+
+    def _emit_edit(self) -> None:
+        bill_id = self.selected_bill_id()
+        if bill_id is not None:
+            self.edit_requested.emit(bill_id)
 
     def _open_selected(self) -> None:
         bill_id = self.selected_bill_id()

@@ -9,9 +9,13 @@ from app.settings.backup_service import (
 )
 from app.settings.config import (
     get_backup_dir,
+    get_secondary_backup_dir,
     is_auto_backup_enabled,
+    is_secondary_backup_enabled,
     load_settings,
     set_backup_dir,
+    set_secondary_backup_dir,
+    set_secondary_backup_enabled,
 )
 from app.settings.page import SettingsPage
 
@@ -26,4 +30,8 @@ __all__ = [
     "get_backup_dir",
     "set_backup_dir",
     "is_auto_backup_enabled",
+    "get_secondary_backup_dir",
+    "set_secondary_backup_dir",
+    "is_secondary_backup_enabled",
+    "set_secondary_backup_enabled",
 ]

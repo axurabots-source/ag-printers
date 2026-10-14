@@ -119,10 +119,10 @@ def paint_pad(
     # White paper
     painter.fillRect(0, 0, A4_WIDTH, A4_HEIGHT, QColor("#FFFFFF"))
 
-    LM = 45.0            # left margin
-    RM = A4_WIDTH - 45.0 # right margin
-    TM = 30.0            # top margin
-    CW = RM - LM         # content width
+    LM = 72.0            # left margin: exactly 0.75 inch (0.75 * 96 = 72 pt)
+    RM = A4_WIDTH - 24.0 # right margin (reduced to 24pt, tight right spacing)
+    TM = 48.0            # top margin (increased top space)
+    CW = RM - LM         # content width (698.0 pt)
 
     # ── HEADER ────────────────────────────────────────────────────────────
     LOGO_SZ = 80
@@ -200,7 +200,7 @@ def paint_pad(
         badge_font = QFont("Georgia", 11, QFont.Weight.Bold)
         badge_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
 
-    BADGE_X = (A4_WIDTH - BADGE_W) / 2.0
+    BADGE_X = LM + (CW - BADGE_W) / 2.0
     badge_rect = QRectF(BADGE_X, BADGE_Y, BADGE_W, BADGE_H)
 
     badge_path = QPainterPath()
@@ -218,8 +218,8 @@ def paint_pad(
     )
 
     # ── METADATA SECTION (Transparent cards with crisp black borders) ───────
-    INFO_TOP = BADGE_Y + BADGE_H + 14
-    INFO_H = 82.0
+    INFO_TOP = BADGE_Y + BADGE_H + 13
+    INFO_H = 80.0
     BOX_BORDER_PEN = QPen(QColor("#000000"), 1.2)
 
     raw_date = data.get("bill_date") or data.get("challan_date") or data.get("date") or data.get("created_at") or ""
@@ -242,9 +242,9 @@ def paint_pad(
     raw_dc = data.get("challan_no") or data.get("challan_number") or data.get("gate_pass_number") or data.get("dc_no") or ""
     dc_no_str = str(raw_dc) if raw_dc else "—"
 
-    LEFT_BOX_W = 405.0
-    RIGHT_BOX_X = LM + LEFT_BOX_W + 14.0
-    RIGHT_BOX_W = CW - (LEFT_BOX_W + 14.0)
+    LEFT_BOX_W = 390.0
+    RIGHT_BOX_X = LM + LEFT_BOX_W + 12.0
+    RIGHT_BOX_W = CW - (LEFT_BOX_W + 12.0)
 
     # 1. Left Card: Customer / Invoiced To (Transparent inside, black border)
     left_rect = QRectF(LM, INFO_TOP, LEFT_BOX_W, INFO_H)
@@ -277,17 +277,17 @@ def paint_pad(
     )
 
     # Reference Badges (3 Chips: P.O., Job, Customer P.O.)
-    badge_y = INFO_TOP + 52
-    badge_h = 24.0
-    chip_gap = 7.0
-    chip_w = (LEFT_BOX_W - 28.0 - (chip_gap * 2.0)) / 3.0
+    badge_y = INFO_TOP + 50
+    badge_h = 23.0
+    chip_gap = 6.0
+    chip_w = (LEFT_BOX_W - 24.0 - (chip_gap * 2.0)) / 3.0
 
     po_display = po_str if (po_str and po_str != "—") else "—"
     job_display = job_str if (job_str and job_str != "—") else "—"
     cust_po_display = cust_po_str if (cust_po_str and cust_po_str != "—") else "—"
 
     # Chip 1: P.O. Number
-    c1_x = LM + 14
+    c1_x = LM + 12
     c1_rect = QRectF(c1_x, badge_y, chip_w, badge_h)
     c1_path = QPainterPath()
     c1_path.addRoundedRect(c1_rect, 4.0, 4.0)
@@ -297,9 +297,9 @@ def paint_pad(
 
     painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
     painter.setPen(QColor("#000000"))
-    painter.drawText(QRectF(c1_x + 4, badge_y, 24, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PO:")
+    painter.drawText(QRectF(c1_x + 3, badge_y, 24, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PO:")
     painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c1_x + 28, badge_y, chip_w - 30, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
+    painter.drawText(QRectF(c1_x + 27, badge_y, chip_w - 29, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
 
     # Chip 2: Job Number
     c2_x = c1_x + chip_w + chip_gap
@@ -309,9 +309,9 @@ def paint_pad(
     painter.drawPath(c2_path)
 
     painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c2_x + 4, badge_y, 28, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB:")
+    painter.drawText(QRectF(c2_x + 3, badge_y, 28, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB:")
     painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c2_x + 32, badge_y, chip_w - 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
+    painter.drawText(QRectF(c2_x + 31, badge_y, chip_w - 33, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
 
     # Chip 3: Customer P.O. Number
     c3_x = c2_x + chip_w + chip_gap
@@ -321,9 +321,9 @@ def paint_pad(
     painter.drawPath(c3_path)
 
     painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c3_x + 4, badge_y, 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "C.PO:")
+    painter.drawText(QRectF(c3_x + 3, badge_y, 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "C.PO:")
     painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c3_x + 38, badge_y, chip_w - 40, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, cust_po_display)
+    painter.drawText(QRectF(c3_x + 37, badge_y, chip_w - 39, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, cust_po_display)
 
     # 2. Right Card: Invoice Details (Transparent inside, black border)
     right_rect = QRectF(RIGHT_BOX_X, INFO_TOP, RIGHT_BOX_W, INFO_H)
@@ -340,18 +340,18 @@ def paint_pad(
         ("GATE PASS NO:" if is_bill else "INVOICE REF:", dc_no_str if is_bill else bill_no_str),
     ]
 
-    row_y_offset = INFO_TOP + 8
-    row_height = 22.0
+    row_y_offset = INFO_TOP + 7
+    row_height = 21.5
 
     meta_lbl_font = QFont("Arial", 8.5, QFont.Weight.Bold)
     meta_lbl_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.5)
-    meta_val_font = QFont("Arial", 10, QFont.Weight.Bold)
+    meta_val_font = QFont("Arial", 9.5, QFont.Weight.Bold)
 
     for lbl_text, val_text in meta_rows:
         painter.setFont(meta_lbl_font)
         painter.setPen(QColor("#000000"))
         painter.drawText(
-            QRectF(RIGHT_BOX_X + 14, row_y_offset, 115, row_height),
+            QRectF(RIGHT_BOX_X + 12, row_y_offset, 110, row_height),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             lbl_text,
         )
@@ -359,7 +359,7 @@ def paint_pad(
         painter.setFont(meta_val_font)
         painter.setPen(QColor("#000000"))
         painter.drawText(
-            QRectF(RIGHT_BOX_X + 120, row_y_offset, RIGHT_BOX_W - 134, row_height),
+            QRectF(RIGHT_BOX_X + 115, row_y_offset, RIGHT_BOX_W - 127, row_height),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             val_text,
         )
@@ -367,7 +367,7 @@ def paint_pad(
         row_y_offset += row_height
 
     # ── TABLE ─────────────────────────────────────────────────────────────
-    TABLE_TOP = INFO_TOP + INFO_H + 16
+    TABLE_TOP = INFO_TOP + INFO_H + 14
 
     TH = 28.0       # table header height
     ROW_H = 32.0    # data row height
@@ -379,11 +379,11 @@ def paint_pad(
 
     if is_bill:
         cw = {
-            "sr":   44.0,
-            "desc": CW - (44.0 + 90.0 + 100.0 + 120.0),
-            "qty":  90.0,
-            "rate": 100.0,
-            "amt":  120.0,
+            "sr":   42.0,
+            "desc": CW - (42.0 + 86.0 + 96.0 + 116.0),
+            "qty":  86.0,
+            "rate": 96.0,
+            "amt":  116.0,
         }
         cols = [
             ("SR.", cw["sr"]),
@@ -394,9 +394,9 @@ def paint_pad(
         ]
     else:
         cw = {
-            "sr":   55.0,
-            "desc": CW - (55.0 + 140.0),
-            "qty":  140.0,
+            "sr":   50.0,
+            "desc": CW - (50.0 + 130.0),
+            "qty":  130.0,
         }
         cols = [
             ("SR.", cw["sr"]),
@@ -543,8 +543,8 @@ def paint_pad(
         )
 
     # ── SIGNATURE AREA ────────────────────────────────────────────────────
-    SIG_W    = 210.0
-    SIG_LN_Y = TABLE_BOTTOM + 55.0
+    SIG_W    = 200.0
+    SIG_LN_Y = TABLE_BOTTOM + 48.0
 
     painter.setPen(QPen(QColor("#374151"), 1.0))
     painter.drawLine(QPointF(LM, SIG_LN_Y), QPointF(LM + SIG_W, SIG_LN_Y))
@@ -565,11 +565,11 @@ def paint_pad(
 
     # ── FOOTER ────────────────────────────────────────────────────────────
     painter.setPen(QPen(QColor("#e2e8f0"), 1.0))
-    painter.drawLine(QPointF(LM, A4_HEIGHT - 28), QPointF(RM, A4_HEIGHT - 28))
+    painter.drawLine(QPointF(LM, A4_HEIGHT - 30), QPointF(RM, A4_HEIGHT - 30))
     painter.setFont(QFont("Arial", 7))
     painter.setPen(QColor("#9ca3af"))
     painter.drawText(
-        QRectF(LM, A4_HEIGHT - 23, CW, 20),
+        QRectF(LM, A4_HEIGHT - 25, CW, 20),
         Qt.AlignmentFlag.AlignCenter,
         "AG Printers  *  agprinters33@gmail.com  *  +92 300 966 9060",
     )
@@ -578,7 +578,7 @@ def paint_pad(
         painter.setFont(QFont("Arial", 7.5, QFont.Weight.Bold))
         painter.setPen(QColor("#64748b"))
         painter.drawText(
-            QRectF(LM, A4_HEIGHT - 23, CW, 20),
+            QRectF(LM, A4_HEIGHT - 25, CW, 20),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             f"Page {page_number} of {total_pages}",
         )

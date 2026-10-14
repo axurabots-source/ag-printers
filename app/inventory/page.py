@@ -29,7 +29,7 @@ from app.db.barcode_inventory import (
     get_barcode_inventory_summary,
     list_barcode_inventory,
 )
-from app.inventory.dialog import BarcodeItemDialog
+from app.inventory.dialog import AddStockDialog, BarcodeItemDialog
 
 
 def _format_timestamp(val: str | None) -> str:
@@ -168,9 +168,9 @@ class InventoryPage(QWidget):
         self._table.setColumnWidth(2, 95)
         self._table.setColumnWidth(3, 115)
         self._table.setColumnWidth(4, 125)
-        self._table.setColumnWidth(5, 115)
-        self._table.setColumnWidth(6, 115)
-        self._table.setColumnWidth(7, 130)
+        self._table.setColumnWidth(5, 110)
+        self._table.setColumnWidth(6, 110)
+        self._table.setColumnWidth(7, 210)
 
         t_layout.addWidget(self._table)
         layout.addWidget(table_card, 1)
@@ -269,16 +269,37 @@ class InventoryPage(QWidget):
             updated_lbl.setStyleSheet("color: #2563EB; font-size: 11.5px; font-weight: 600;")
             self._table.setCellWidget(row, 6, updated_lbl)
 
-            # 7. Actions (Edit / Delete)
+            # 7. Actions (+ Stock / Edit / Delete)
             act_widget = QWidget()
             act_layout = QHBoxLayout(act_widget)
-            act_layout.setContentsMargins(4, 4, 4, 4)
-            act_layout.setSpacing(6)
+            act_layout.setContentsMargins(2, 4, 2, 4)
+            act_layout.setSpacing(5)
             act_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            stock_btn = QPushButton("+ Stock")
+            stock_btn.setFixedSize(58, 28)
+            stock_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            stock_btn.setToolTip("Quickly add incoming stock quantity to this item")
+            stock_btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid #A7F3D0;
+                    border-radius: 4px;
+                    color: #047857;
+                    font-size: 11px;
+                    font-weight: 700;
+                    background-color: #ECFDF5;
+                }
+                QPushButton:hover {
+                    background-color: #D1FAE5;
+                    border-color: #6EE7B7;
+                }
+            """)
+            stock_btn.clicked.connect(lambda _, it=item: self._open_add_stock_dialog(it))
+            act_layout.addWidget(stock_btn)
 
             edit_btn = QPushButton("Edit")
             edit_btn.setObjectName("OutlineButton")
-            edit_btn.setFixedSize(56, 28)
+            edit_btn.setFixedSize(52, 28)
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.setStyleSheet("""
                 QPushButton {
@@ -298,7 +319,7 @@ class InventoryPage(QWidget):
             act_layout.addWidget(edit_btn)
 
             del_btn = QPushButton("Delete")
-            del_btn.setFixedSize(60, 28)
+            del_btn.setFixedSize(56, 28)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             del_btn.setStyleSheet("""
                 QPushButton {
@@ -321,6 +342,12 @@ class InventoryPage(QWidget):
 
     def _open_add_dialog(self) -> None:
         dlg = BarcodeItemDialog(self._connection, parent=self)
+        if dlg.exec():
+            self.refresh()
+            self.inventory_updated.emit()
+
+    def _open_add_stock_dialog(self, item: BarcodeInventoryItem) -> None:
+        dlg = AddStockDialog(self._connection, item=item, parent=self)
         if dlg.exec():
             self.refresh()
             self.inventory_updated.emit()

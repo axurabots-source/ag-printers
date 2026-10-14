@@ -19,7 +19,9 @@ from app.pdf_settings import get_pdf_export_dir
 from app.settings.config import (
     get_backup_dir,
     get_retention_count,
+    get_secondary_backup_dir,
     is_auto_backup_enabled,
+    is_secondary_backup_enabled,
     record_backup_success,
 )
 
@@ -170,6 +172,19 @@ def create_backup(
         # Apply retention cleanup if this was an auto backup
         if backup_type == "auto":
             cleanup_old_backups(backup_dir, get_retention_count())
+
+        # Dual Backup: Mirror copy to Secondary / Cloud Drive if enabled
+        if is_secondary_backup_enabled():
+            sec_dir = get_secondary_backup_dir()
+            if sec_dir:
+                try:
+                    sec_dir.mkdir(parents=True, exist_ok=True)
+                    sec_file = sec_dir / final_zip_path.name
+                    shutil.copy2(final_zip_path, sec_file)
+                    if backup_type == "auto":
+                        cleanup_old_backups(sec_dir, get_retention_count())
+                except Exception as sec_err:
+                    print(f"Warning: Secondary backup copy to {sec_dir} failed: {sec_err}")
 
         return final_zip_path
 

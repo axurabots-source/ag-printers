@@ -143,3 +143,18 @@ def deduct_barcode_inventory_stock(
     connection.execute(sql, (max(0.0, float(quantity_to_deduct)), int(item_id)))
     connection.commit()
 
+
+def add_barcode_inventory_stock(
+    connection: sqlite3.Connection, item_id: int, quantity_to_add: float
+) -> None:
+    """Add stock quantity to an existing barcode inventory item and update updated_at."""
+    sql = """
+        UPDATE barcode_inventory
+        SET quantity = quantity + ?,
+            updated_at = datetime('now', 'localtime')
+        WHERE id = ?
+    """
+    connection.execute(sql, (max(0.0, float(quantity_to_add)), int(item_id)))
+    connection.commit()
+
+

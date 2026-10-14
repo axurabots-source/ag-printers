@@ -45,6 +45,9 @@ class CleanNumericSpinBox(QDoubleSpinBox):
         super().focusInEvent(event)
         self.selectAll()
 
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
 
 class BarcodeItemDialog(QDialog):
     """Dialog to create or edit a barcode stock inventory item."""
@@ -193,3 +196,128 @@ class BarcodeItemDialog(QDialog):
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error Saving Item", f"Could not save barcode inventory item:\n{e}")
+
+
+class AddStockDialog(QDialog):
+    """Quick dialog to add incoming stock quantity to an existing item."""
+
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        item: BarcodeInventoryItem,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._connection = connection
+        self._item = item
+        self.setModal(True)
+        self.setFixedWidth(440)
+        self.setWindowTitle(f"Add Stock — {item.detail}")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        # Header Title
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title_lbl = QLabel("+ Add Stock Quantity")
+        title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #047857;")
+        sub_lbl = QLabel(f"Item: {item.detail}")
+        sub_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1E293B;")
+        title_box.addWidget(title_lbl)
+        title_box.addWidget(sub_lbl)
+        layout.addLayout(title_box)
+
+        # Form Card
+        form_card = QFrame()
+        form_card.setStyleSheet("""
+            QFrame {
+                background-color: #F8FAFC;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+                padding: 14px;
+            }
+        """)
+        form = QFormLayout(form_card)
+        form.setSpacing(12)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        def make_label(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #334155; border: none; background: transparent;")
+            return lbl
+
+        # 1. Current Stock
+        curr_qty_str = f"{item.quantity:,.0f}" if item.quantity.is_integer() else f"{item.quantity:,.2f}"
+        curr_lbl = QLabel(f"{curr_qty_str} Units")
+        curr_lbl.setStyleSheet("font-size: 13px; font-weight: 700; color: #1E293B; border: none; background: transparent;")
+        form.addRow(make_label("Current Stock"), curr_lbl)
+
+        # 2. Quantity to Add
+        self._add_qty_spin = CleanNumericSpinBox(decimals=0)
+        self._add_qty_spin.setRange(0.01, 99999999.0)
+        self._add_qty_spin.setValue(100.0)
+        form.addRow(make_label("Quantity to Add (+) *"), self._add_qty_spin)
+
+        # 3. New Total Preview
+        self._new_total_lbl = QLabel("")
+        self._new_total_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #047857; border: none; background: transparent;")
+        form.addRow(make_label("New Total Stock"), self._new_total_lbl)
+
+        layout.addWidget(form_card)
+
+        self._add_qty_spin.valueChanged.connect(self._update_preview)
+        self._update_preview()
+
+        # Action Buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        btn_row.addStretch(1)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("OutlineButton")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        add_btn = QPushButton("+ Add to Stock")
+        add_btn.setObjectName("PrimaryButton")
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #047857;
+                color: #FFFFFF;
+                font-weight: 700;
+                padding: 6px 16px;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #065F46;
+            }
+        """)
+        add_btn.setDefault(True)
+        add_btn.clicked.connect(self._save)
+        btn_row.addWidget(add_btn)
+
+        layout.addLayout(btn_row)
+        self._add_qty_spin.setFocus()
+
+    def _update_preview(self) -> None:
+        add_qty = self._add_qty_spin.value()
+        new_total = self._item.quantity + add_qty
+        tot_str = f"{new_total:,.0f}" if new_total.is_integer() else f"{new_total:,.2f}"
+        self._new_total_lbl.setText(f"{tot_str} Units  (+{add_qty:,.0f})")
+
+    def _save(self) -> None:
+        add_qty = self._add_qty_spin.value()
+        if add_qty <= 0:
+            QMessageBox.warning(self, "Invalid Quantity", "Please enter a quantity greater than 0.")
+            self._add_qty_spin.setFocus()
+            return
+        try:
+            from app.db.barcode_inventory import add_barcode_inventory_stock
+            add_barcode_inventory_stock(self._connection, self._item.id, add_qty)
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error Adding Stock", f"Could not update inventory stock:\n{e}")
+

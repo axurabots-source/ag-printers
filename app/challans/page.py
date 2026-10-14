@@ -45,6 +45,8 @@ class GatePassPage(QWidget):
     document_opened = Signal(str)
     #: Emitted when the view returns to the challan list.
     list_shown = Signal()
+    #: Emitted when user clicks to edit the invoice for this gate pass.
+    edit_requested = Signal(int)
 
     _COLUMNS = (
         "Gate Pass Number",
@@ -54,7 +56,7 @@ class GatePassPage(QWidget):
         "Invoice Number",
         "Items",
         "Qty",
-        "PDF",
+        "Actions",
     )
 
     def __init__(self, connection: sqlite3.Connection, parent=None) -> None:
@@ -78,6 +80,9 @@ class GatePassPage(QWidget):
         self._showing = "challan"
         self._toggle_button = self._document.add_action(
             "Open Invoice", self._toggle_document
+        )
+        self._edit_button = self._document.add_action(
+            "Edit Invoice", self._edit_current
         )
 
     # -- list ------------------------------------------------------------
@@ -130,7 +135,7 @@ class GatePassPage(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
         self._table.setColumnWidth(6, 100)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
-        self._table.setColumnWidth(7, 110)
+        self._table.setColumnWidth(7, 155)
 
         self._empty = QLabel(
             "No gate passes yet. One is generated automatically with every invoice."
@@ -185,6 +190,27 @@ class GatePassPage(QWidget):
             quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._table.setItem(row, 6, quantity_item)
 
+            edit_btn = QPushButton("Edit")
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.setStyleSheet("""
+                QPushButton {
+                    background: #2563eb;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-weight: 600;
+                    font-size: 11px;
+                }
+                QPushButton:hover {
+                    background: #1d4ed8;
+                }
+                QPushButton:pressed {
+                    background: #1e40af;
+                }
+            """)
+            edit_btn.clicked.connect(lambda _checked=False, bid=gate_pass.bill_id: self.edit_requested.emit(bid))
+
             pdf_btn = QPushButton("Open PDF")
             pdf_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             pdf_btn.setStyleSheet("""
@@ -207,8 +233,10 @@ class GatePassPage(QWidget):
             pdf_btn.clicked.connect(lambda _checked=False, bid=gate_pass.bill_id: self._open_bill_pdf(bid))
             btn_container = QWidget()
             btn_layout = QHBoxLayout(btn_container)
-            btn_layout.setContentsMargins(6, 4, 6, 4)
+            btn_layout.setContentsMargins(4, 4, 4, 4)
+            btn_layout.setSpacing(6)
             btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            btn_layout.addWidget(edit_btn)
             btn_layout.addWidget(pdf_btn)
             self._table.setCellWidget(row, 7, btn_container)
 
@@ -271,6 +299,10 @@ class GatePassPage(QWidget):
             self.open_bill_for(self._gate_pass.id)
         else:
             self.open_challan(self._gate_pass.id)
+
+    def _edit_current(self) -> None:
+        if self._gate_pass is not None:
+            self.edit_requested.emit(self._gate_pass.bill_id)
 
     def _sync_buttons(self) -> None:
         enabled = self.selected_gate_pass_id() is not None

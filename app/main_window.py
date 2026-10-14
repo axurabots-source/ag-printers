@@ -82,10 +82,12 @@ class MainWindow(QMainWindow):
                 page.document_opened.connect(self._on_document_opened)
                 page.list_shown.connect(self._on_bills_list_shown)
                 page.new_requested.connect(lambda: self._show_page("New Job"))
+                page.edit_requested.connect(self._on_edit_bill_requested)
             elif name == "Gate Pass":
                 page = GatePassPage(self._connection)
                 page.document_opened.connect(self._on_document_opened)
                 page.list_shown.connect(self._on_gate_pass_list_shown)
+                page.edit_requested.connect(self._on_edit_bill_requested)
             elif name == "Costing":
                 page = CostingPage(self._connection)
                 page.document_opened.connect(self._on_costing_opened)
@@ -167,6 +169,14 @@ class MainWindow(QMainWindow):
     def _on_job_bill_saved(self, bill_id: int) -> None:
         """Status note when a bill & challan are saved from New Job workspace."""
         self.statusBar().showMessage(f"Job saved successfully as Invoice #{bill_id}")
+
+    def _on_edit_bill_requested(self, bill_id: int) -> None:
+        """Switch to New Job / Billing workspace and load the selected bill for editing."""
+        new_job_page = self._pages.get("New Job")
+        self._show_page("New Job")
+        if new_job_page is not None and hasattr(new_job_page, "load_bill_for_editing"):
+            new_job_page.load_bill_for_editing(bill_id)
+        self.statusBar().showMessage(f"Editing Invoice #{bill_id}")
 
     def _on_profile_opened(self, party_name: str) -> None:
         """Header/status update when a party profile is shown."""

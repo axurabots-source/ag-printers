@@ -38,10 +38,14 @@ from app.settings.config import (
     get_backup_dir,
     get_last_backup_info,
     get_retention_count,
+    get_secondary_backup_dir,
     is_auto_backup_enabled,
+    is_secondary_backup_enabled,
     set_auto_backup_enabled,
     set_backup_dir,
     set_retention_count,
+    set_secondary_backup_dir,
+    set_secondary_backup_enabled,
 )
 from app.updater.checker import UpdateCheckerThread, UpdateInfo
 from app.updater.dialog import UpdateDialog
@@ -337,6 +341,76 @@ class SettingsPage(QWidget):
         loc_row.addWidget(open_bk_btn)
         layout.addLayout(loc_row)
 
+        # 1b. Secondary / Cloud Drive Backup Row (Google Drive / OneDrive / USB)
+        sec_box_frame = QFrame()
+        sec_box_frame.setStyleSheet("""
+            QFrame {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+            }
+        """)
+        sec_layout = QVBoxLayout(sec_box_frame)
+        sec_layout.setContentsMargins(14, 12, 14, 12)
+        sec_layout.setSpacing(8)
+
+        sec_header_row = QHBoxLayout()
+        sec_header_row.setSpacing(10)
+
+        self._sec_backup_cb = QCheckBox("Dual Backup: Also save a copy to Secondary Drive (Google Drive / OneDrive / USB)")
+        self._sec_backup_cb.setStyleSheet("""
+            QCheckBox {
+                font-size: 13px;
+                font-weight: 700;
+                color: #0f172a;
+            }
+        """)
+        self._sec_backup_cb.toggled.connect(self._on_secondary_backup_toggled)
+        sec_header_row.addWidget(self._sec_backup_cb)
+        sec_header_row.addStretch(1)
+
+        change_sec_btn = QPushButton("Select Drive / Folder")
+        change_sec_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        change_sec_btn.setStyleSheet("""
+            QPushButton {
+                background: #0284c7;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover { background: #0369a1; }
+        """)
+        change_sec_btn.clicked.connect(self._on_change_secondary_backup_dir)
+        sec_header_row.addWidget(change_sec_btn)
+
+        open_sec_btn = QPushButton("Open Folder")
+        open_sec_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_sec_btn.setStyleSheet("""
+            QPushButton {
+                background: #e2e8f0;
+                color: #334155;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover { background: #cbd5e1; }
+        """)
+        open_sec_btn.clicked.connect(self._on_open_secondary_backup_dir)
+        sec_header_row.addWidget(open_sec_btn)
+
+        sec_layout.addLayout(sec_header_row)
+
+        self._sec_backup_dir_lbl = QLabel()
+        self._sec_backup_dir_lbl.setStyleSheet("font-size: 12px; color: #64748b; padding-left: 20px;")
+        sec_layout.addWidget(self._sec_backup_dir_lbl)
+
+        layout.addWidget(sec_box_frame)
+
         # Separator line
         sep = QFrame()
         sep.setFixedHeight(1)
@@ -593,9 +667,21 @@ class SettingsPage(QWidget):
         pdf_dir = get_pdf_export_dir()
         self._pdf_dir_lbl.setText(str(pdf_dir))
 
-        # 2. Backup Location
+        # 2. Backup Location (Primary)
         bk_dir = get_backup_dir()
         self._backup_dir_lbl.setText(str(bk_dir))
+
+        # 2b. Secondary Backup Location
+        sec_enabled = is_secondary_backup_enabled()
+        sec_dir = get_secondary_backup_dir()
+        self._sec_backup_cb.blockSignals(True)
+        self._sec_backup_cb.setChecked(sec_enabled)
+        self._sec_backup_cb.blockSignals(False)
+
+        if sec_dir:
+            self._sec_backup_dir_lbl.setText(f"Folder: {sec_dir}")
+        else:
+            self._sec_backup_dir_lbl.setText("No secondary drive configured. Click 'Select Drive / Folder' to choose your Google Drive or external drive.")
 
         # 3. Status
         stats = get_backup_folder_stats()
@@ -647,6 +733,37 @@ class SettingsPage(QWidget):
             else:
                 subprocess.run(["xdg-open", str(p)], check=False)
 
+    def _on_secondary_backup_toggled(self, checked: bool) -> None:
+        set_secondary_backup_enabled(checked)
+        if checked and get_secondary_backup_dir() is None:
+            self._on_change_secondary_backup_dir()
+        else:
+            self.refresh()
+
+    def _on_change_secondary_backup_dir(self) -> None:
+        sec = get_secondary_backup_dir()
+        current = str(sec) if sec else str(get_backup_dir())
+        chosen = QFileDialog.getExistingDirectory(self, "Select Secondary / Google Drive Backup Folder", current)
+        if chosen:
+            set_secondary_backup_dir(chosen)
+            set_secondary_backup_enabled(True)
+            self.refresh()
+
+    def _on_open_secondary_backup_dir(self) -> None:
+        p = get_secondary_backup_dir()
+        if p and p.exists():
+            if sys.platform == "win32":
+                os.startfile(str(p))
+            else:
+                subprocess.run(["xdg-open", str(p)], check=False)
+        else:
+            QMessageBox.information(
+                self,
+                "Secondary Folder Not Found",
+                "Secondary backup folder has not been selected yet or is currently offline.\n\n"
+                "Click 'Select Drive / Folder' to choose your Google Drive, OneDrive, or external drive.",
+            )
+
     def _on_auto_backup_toggled(self, checked: bool) -> None:
         set_auto_backup_enabled(checked)
 
@@ -657,12 +774,15 @@ class SettingsPage(QWidget):
         try:
             zip_path = create_backup(self._connection, backup_type="manual")
             self.refresh()
+            sec_dir = get_secondary_backup_dir() if is_secondary_backup_enabled() else None
+            sec_note = f"\nSecondary Drive: {sec_dir}" if sec_dir else ""
             QMessageBox.information(
                 self,
                 "Backup Successful",
                 f"Backup created successfully.\n\n"
                 f"File: {zip_path.name}\n"
-                f"Location: {zip_path.parent}",
+                f"Primary Location: {zip_path.parent}"
+                f"{sec_note}",
             )
         except Exception as exc:
             QMessageBox.critical(

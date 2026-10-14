@@ -38,7 +38,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.db.bills import create_bill, suggest_bill_number, suggest_gate_pass_number
+from app.db.bills import (
+    create_bill,
+    get_bill,
+    suggest_bill_number,
+    suggest_gate_pass_number,
+    update_bill,
+)
 from app.db.parties import Party, list_parties
 from app.jobs.a4_view import A4PrintPreviewDialog
 from app.jobs.costing_drawer import JobCostingDrawer
@@ -87,6 +93,21 @@ class CleanTableSpinBox(QDoubleSpinBox):
         super().focusInEvent(event)
         QTimer.singleShot(0, self.selectAll)
 
+    def wheelEvent(self, event) -> None:
+        """Ignore mouse wheel events so scrolling the table or page does not spin the value or add rows."""
+        event.ignore()
+
+
+class NoWheelComboBox(QComboBox):
+    """QComboBox that ignores mouse wheel scrolling when popup is closed,
+    preventing unintended selection shifts and row additions while scrolling."""
+
+    def wheelEvent(self, event) -> None:
+        if not self.view().isVisible():
+            event.ignore()
+        else:
+            super().wheelEvent(event)
+
 
 class NewJobPage(QWidget):
     """Executive single-screen workspace for entering jobs, billing, and generating challans."""
@@ -100,6 +121,7 @@ class NewJobPage(QWidget):
         self._parties: list[Party] = []
         self._selected_party: Party | None = None
         self._is_updating_table = False
+        self._editing_bill_id: int | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 20, 24, 20)
@@ -122,12 +144,12 @@ class NewJobPage(QWidget):
         title_box = QVBoxLayout()
         title_box.setSpacing(3)
 
-        title = QLabel("New Job & Invoicing Terminal")
-        title.setObjectName("DialogTitle")
-        subtitle = QLabel("Create and print Invoice & Gate Pass together on a single screen.")
-        subtitle.setObjectName("FieldLabel")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
+        self._title_label = QLabel("New Job & Invoicing Terminal")
+        self._title_label.setObjectName("DialogTitle")
+        self._subtitle_label = QLabel("Create and print Invoice & Gate Pass together on a single screen.")
+        self._subtitle_label.setObjectName("FieldLabel")
+        title_box.addWidget(self._title_label)
+        title_box.addWidget(self._subtitle_label)
         top_bar.addLayout(title_box)
         top_bar.addStretch(1)
 
@@ -156,7 +178,7 @@ class NewJobPage(QWidget):
         party_row = QHBoxLayout()
         party_row.setSpacing(14)
 
-        self._party_combo = QComboBox()
+        self._party_combo = NoWheelComboBox()
         self._party_combo.setObjectName("FormInput")
         self._party_combo.setMinimumWidth(340)
         self._party_combo.currentIndexChanged.connect(self._on_party_selected)
@@ -543,17 +565,74 @@ class NewJobPage(QWidget):
                 details.append(f"Address: {self._selected_party.address}")
             self._party_info.setText("  |  ".join(details) or "Active Client Profile")
 
-            # Show Bill Section & prepare numbers
-            self._bill_num_edit.setText(suggest_bill_number(self._connection))
-            self._dc_num_edit.setText(suggest_gate_pass_number(self._connection))
+            # Show Bill Section & prepare numbers (only suggest if creating new)
+            if self._editing_bill_id is None:
+                self._bill_num_edit.setText(suggest_bill_number(self._connection))
+                self._dc_num_edit.setText(suggest_gate_pass_number(self._connection))
             self._placeholder_guide.setVisible(False)
             self._bill_container.setVisible(True)
 
             if hasattr(self, "_costing_drawer") and self._costing_drawer:
                 self._costing_drawer.refresh_inventory()
 
-            if self._table.rowCount() == 0:
+            if self._editing_bill_id is None and self._table.rowCount() == 0:
                 self.add_row(focus_desc=False)
+
+    def load_bill_for_editing(self, bill_id: int) -> None:
+        """Load an existing bill and its line items into the workspace for editing."""
+        bill = get_bill(self._connection, bill_id)
+        if bill is None:
+            QMessageBox.warning(self, "Invoice Not Found", f"Could not find invoice #{bill_id} to edit.")
+            return
+
+        self._editing_bill_id = bill_id
+
+        # Update Header & Save Button for editing
+        self._title_label.setText(f"Edit Invoice & Gate Pass — {bill.bill_number}")
+        self._subtitle_label.setText("Modify invoice details, items, rates, quantities, or recipient and save changes.")
+        self._save_btn.setText("Update Invoice & Gate Pass")
+
+        # Load parties and select this bill's client
+        self.load_parties()
+        idx = self._party_combo.findData(bill.party_id)
+        if idx >= 0:
+            self._party_combo.setCurrentIndex(idx)
+        else:
+            self._party_combo.setCurrentIndex(0)
+
+        # Set Dates and Document identifiers
+        if bill.bill_date:
+            try:
+                self._date_edit.setDate(QDate.fromString(bill.bill_date, "yyyy-MM-dd"))
+            except Exception:
+                pass
+
+        self._bill_num_edit.setText(bill.bill_number or "")
+        gp_num = bill.gate_pass.gate_pass_number if bill.gate_pass else ""
+        self._dc_num_edit.setText(gp_num or bill.bill_number or "")
+        self._po_edit.setText(bill.po_number or "")
+        self._job_num_edit.setText(bill.job_number or "")
+        self._cust_po_edit.setText(getattr(bill, "customer_po", "") or "")
+
+        # Clear and load items directly
+        self._is_updating_table = True
+        self._committed_inventory_materials.clear()
+        self._table.setRowCount(0)
+        if bill.items:
+            for item in bill.items:
+                self.add_row(
+                    description=item.description,
+                    quantity=item.quantity,
+                    cost_price=getattr(item, "cost_price", 0.0) or 0.0,
+                    rate=item.rate,
+                )
+        else:
+            self.add_row(focus_desc=False)
+        self._is_updating_table = False
+
+        self._on_row_data_changed()
+        self._placeholder_guide.setVisible(False)
+        self._bill_container.setVisible(True)
 
     # -- table row management (auto-expanding) -----------------------------
 
@@ -1079,22 +1158,41 @@ class NewJobPage(QWidget):
         prod_cost = total_line_cost if total_line_cost > 0 else (self._costing_drawer.get_total_cost() if hasattr(self, "_costing_drawer") else 0.0)
         net_profit = sum(item["quantity"] * (item["rate"] - item.get("cost_price", 0.0)) for item in lines) if total_line_cost > 0 else (total_bill_amount - prod_cost if prod_cost > 0 else 0.0)
 
+        is_editing = (self._editing_bill_id is not None)
         try:
-            bill_id = create_bill(
-                self._connection,
-                party_id=self._selected_party.id,
-                po_number=data["po_number"],
-                job_number=data["job_number"],
-                customer_po=data["customer_po"],
-                bill_number=data["bill_number"],
-                gate_pass_number=data["gate_pass_number"],
-                bill_date=data["bill_date"],
-                lines=[(item["description"], item["quantity"], item["rate"], item.get("cost_price", 0.0)) for item in lines],
-                production_cost=prod_cost,
-                profit=net_profit,
-            )
+            if is_editing:
+                update_bill(
+                    self._connection,
+                    bill_id=self._editing_bill_id,  # type: ignore[arg-type]
+                    party_id=self._selected_party.id,
+                    po_number=data["po_number"],
+                    job_number=data["job_number"],
+                    customer_po=data["customer_po"],
+                    bill_number=data["bill_number"],
+                    gate_pass_number=data["gate_pass_number"],
+                    bill_date=data["bill_date"],
+                    lines=[(item["description"], item["quantity"], item["rate"], item.get("cost_price", 0.0)) for item in lines],
+                    production_cost=prod_cost,
+                    profit=net_profit,
+                )
+                bill_id = self._editing_bill_id
+            else:
+                bill_id = create_bill(
+                    self._connection,
+                    party_id=self._selected_party.id,
+                    po_number=data["po_number"],
+                    job_number=data["job_number"],
+                    customer_po=data["customer_po"],
+                    bill_number=data["bill_number"],
+                    gate_pass_number=data["gate_pass_number"],
+                    bill_date=data["bill_date"],
+                    lines=[(item["description"], item["quantity"], item["rate"], item.get("cost_price", 0.0)) for item in lines],
+                    production_cost=prod_cost,
+                    profit=net_profit,
+                )
         except Exception as exc:
-            QMessageBox.critical(self, "Error Saving Invoice", str(exc))
+            action_text = "Updating" if is_editing else "Saving"
+            QMessageBox.critical(self, f"Error {action_text} Invoice", str(exc))
             return
 
         # Deduct barcode inventory stock for any materials used in costing or in bill lines
@@ -1139,10 +1237,10 @@ class NewJobPage(QWidget):
         except Exception as inv_err:
             print(f"Warning: barcode inventory deduction encountered error: {inv_err}")
 
-        # Automatically export PDF to the designated PDF export folder
+        # Automatically export / overwrite PDF to the designated PDF export folder
         pdf_path_obj = None
         try:
-            pdf_path_obj = get_or_create_bill_pdf(self._connection, bill_id)
+            pdf_path_obj = get_or_create_bill_pdf(self._connection, bill_id, force_regenerate=True)
         except Exception as pdf_err:
             print(f"Warning: could not export PDF on save: {pdf_err}")
 
@@ -1150,10 +1248,12 @@ class NewJobPage(QWidget):
         pdf_note = f"PDF Saved: {pdf_path_obj.name}\n" if pdf_path_obj else ""
 
         # Success message with option to print
+        msg_title = "Invoice & Gate Pass Updated" if is_editing else "Invoice & Gate Pass Generated"
+        msg_action = "updated" if is_editing else "generated and saved"
         answer = QMessageBox.information(
             self,
-            "Invoice & Gate Pass Generated",
-            f"Invoice #{data['bill_number']} and Gate Pass #{data['gate_pass_number']} have been generated and saved successfully.\n\n"
+            msg_title,
+            f"Invoice #{data['bill_number']} and Gate Pass #{data['gate_pass_number']} have been {msg_action} successfully.\n\n"
             f"Client: {data['party_name']}\n"
             f"Job #: {data['job_number'] or 'None'}\n"
             f"P.O. #: {data['po_number'] or 'None'}\n"
@@ -1174,6 +1274,13 @@ class NewJobPage(QWidget):
 
     def reset_form(self) -> None:
         """Reset the form to ready state."""
+        self._editing_bill_id = None
+        if hasattr(self, "_title_label"):
+            self._title_label.setText("New Job & Invoicing Terminal")
+        if hasattr(self, "_subtitle_label"):
+            self._subtitle_label.setText("Create and print Invoice & Gate Pass together on a single screen.")
+        if hasattr(self, "_save_btn"):
+            self._save_btn.setText("Save & Generate Invoice + Gate Pass")
         self._po_edit.clear()
         self._job_num_edit.clear()
         self._cust_po_edit.clear()
@@ -1189,6 +1296,7 @@ class NewJobPage(QWidget):
 
     def reset_to_list(self) -> None:
         """Called by MainWindow when switching to this tab."""
-        self.load_parties()
+        if self._editing_bill_id is None:
+            self.load_parties()
         if hasattr(self, "_costing_drawer") and self._costing_drawer:
             self._costing_drawer.refresh_inventory()

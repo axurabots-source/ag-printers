@@ -19,6 +19,8 @@ def _default_settings() -> dict[str, Any]:
         "retention_count": 10,
         "last_backup_time": "",
         "last_backup_file": "",
+        "secondary_backup_enabled": False,
+        "secondary_backup_dir": "",
     }
 
 
@@ -121,3 +123,46 @@ def record_backup_success(filename: str, timestamp_str: str) -> None:
     settings["last_backup_time"] = timestamp_str
     settings["last_backup_file"] = filename
     save_settings(settings)
+
+
+def is_secondary_backup_enabled() -> bool:
+    """Return whether secondary/cloud drive backup is enabled."""
+    return bool(load_settings().get("secondary_backup_enabled", False))
+
+
+def set_secondary_backup_enabled(enabled: bool) -> None:
+    """Toggle secondary/cloud drive backup preference."""
+    settings = load_settings()
+    settings["secondary_backup_enabled"] = bool(enabled)
+    save_settings(settings)
+
+
+def get_secondary_backup_dir() -> Path | None:
+    """Return the designated secondary/cloud backup directory path, or None if not set."""
+    settings = load_settings()
+    raw = str(settings.get("secondary_backup_dir", "")).strip()
+    if not raw:
+        return None
+    p = Path(raw).resolve()
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    except Exception:
+        return p
+
+
+def set_secondary_backup_dir(path: Path | str | None) -> Path | None:
+    """Update and persist the secondary/cloud backup directory location."""
+    settings = load_settings()
+    if not path:
+        settings["secondary_backup_dir"] = ""
+        save_settings(settings)
+        return None
+    p = Path(path).resolve()
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    settings["secondary_backup_dir"] = str(p)
+    save_settings(settings)
+    return p

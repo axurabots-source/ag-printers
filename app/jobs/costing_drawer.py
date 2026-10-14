@@ -31,6 +31,17 @@ from app.costing.calculator import CollapsibleSection, PriceInputGroup, _fmt
 from app.ui.theme import CHEVRON_DOWN_SVG
 
 
+class NoWheelComboBox(QComboBox):
+    """QComboBox that ignores mouse wheel scrolling when popup is closed,
+    preventing accidental selection changes and row additions while scrolling."""
+
+    def wheelEvent(self, event) -> None:
+        if not self.view().isVisible():
+            event.ignore()
+        else:
+            super().wheelEvent(event)
+
+
 class JobCostingDrawer(QFrame):
     """Smart Collapsible Costing & Profit Drawer for New Job workspace."""
 
@@ -162,7 +173,7 @@ class JobCostingDrawer(QFrame):
         lbl_target_hint.setStyleSheet("font-size: 12px; font-weight: 700; color: #475569; border: none; background: transparent;")
         ts_row1.addWidget(lbl_target_hint)
 
-        self.item_combo = QComboBox()
+        self.item_combo = NoWheelComboBox()
         self.item_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.item_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.item_combo.setMinimumContentsLength(8)

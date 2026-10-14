@@ -56,7 +56,9 @@ def export_bill_pdf(data: dict[str, Any], output_path: str | Path | None = None)
     return out_file
 
 
-def get_or_create_bill_pdf(connection: sqlite3.Connection, bill_id: int) -> Path | None:
+def get_or_create_bill_pdf(
+    connection: sqlite3.Connection, bill_id: int, force_regenerate: bool = True
+) -> Path | None:
     """Fetch existing PDF path from disk, or dynamically regenerate into the configured local folder."""
     from app.db.bills import get_bill
     from app.db.parties import get_party
@@ -65,25 +67,29 @@ def get_or_create_bill_pdf(connection: sqlite3.Connection, bill_id: int) -> Path
     if bill is None:
         return None
 
-    # Check if recorded pdf_path exists on local machine
-    if hasattr(bill, "pdf_path") and bill.pdf_path:
-        p = Path(bill.pdf_path)
-        if p.exists():
-            return p
+    if not force_regenerate:
+        # Check if recorded pdf_path exists on local machine
+        if hasattr(bill, "pdf_path") and bill.pdf_path:
+            p = Path(bill.pdf_path)
+            if p.exists():
+                return p
 
-    # Also check if matching file exists in current export directory
-    party = get_party(connection, bill.party_id) if bill.party_id else None
-    party_name = party.name if party else bill.party_name
-    expected_filename = build_pdf_filename(party_name, bill.bill_date, bill.bill_number)
-    target_dir = get_pdf_export_dir()
-    expected_path = target_dir / expected_filename
-    if expected_path.exists():
-        try:
-            connection.execute("UPDATE bills SET pdf_path = ? WHERE id = ?", (str(expected_path), bill_id))
-            connection.commit()
-        except Exception:
-            pass
-        return expected_path
+        # Also check if matching file exists in current export directory
+        party = get_party(connection, bill.party_id) if bill.party_id else None
+        party_name = party.name if party else bill.party_name
+        expected_filename = build_pdf_filename(party_name, bill.bill_date, bill.bill_number)
+        target_dir = get_pdf_export_dir()
+        expected_path = target_dir / expected_filename
+        if expected_path.exists():
+            try:
+                connection.execute("UPDATE bills SET pdf_path = ? WHERE id = ?", (str(expected_path), bill_id))
+                connection.commit()
+            except Exception:
+                pass
+            return expected_path
+    else:
+        party = get_party(connection, bill.party_id) if bill.party_id else None
+        party_name = party.name if party else bill.party_name
 
     # Regenerate fresh PDF
     items_data = []
