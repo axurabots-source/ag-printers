@@ -47,6 +47,7 @@ def _get_table_counts(connection: sqlite3.Connection) -> dict[str, int]:
         "costing_lines",
         "party_rates",
         "barcode_inventory",
+        "bill_inventory_deductions",
     ]
     counts: dict[str, int] = {}
     for tbl in tables:
@@ -352,6 +353,7 @@ def clear_business_data(connection: sqlite3.Connection) -> dict[str, Any]:
     # 2. Delete business records in a safe transaction
     tables_to_clear = [
         "gate_passes",
+        "bill_inventory_deductions",
         "bill_items",
         "bills",
         "costing_lines",

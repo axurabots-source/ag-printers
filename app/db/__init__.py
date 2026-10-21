@@ -16,6 +16,20 @@ from app.db.bills import (
     suggest_bill_number,
     suggest_gate_pass_number,
 )
+from app.db.barcode_inventory import (
+    BarcodeInventoryItem,
+    add_barcode_inventory_stock,
+    create_barcode_inventory_item,
+    deduct_barcode_inventory_stock,
+    delete_barcode_inventory_item,
+    get_barcode_inventory_item,
+    get_barcode_inventory_summary,
+    get_bill_inventory_deductions,
+    list_barcode_inventory,
+    record_bill_inventory_deductions,
+    restore_bill_inventory_deductions,
+    update_barcode_inventory_item,
+)
 from app.db.connection import create_connection
 from app.db.costing import (
     ALL_LINE_NAMES,

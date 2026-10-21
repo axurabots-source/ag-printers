@@ -1158,7 +1158,105 @@ class NewJobPage(QWidget):
         prod_cost = total_line_cost if total_line_cost > 0 else (self._costing_drawer.get_total_cost() if hasattr(self, "_costing_drawer") else 0.0)
         net_profit = sum(item["quantity"] * (item["rate"] - item.get("cost_price", 0.0)) for item in lines) if total_line_cost > 0 else (total_bill_amount - prod_cost if prod_cost > 0 else 0.0)
 
+        # 1. Calculate required barcode inventory deductions
+        deductions_by_id: dict[int, float] = {}
+        old_deductions: dict[int, float] = {}
         is_editing = (self._editing_bill_id is not None)
+
+        try:
+            from app.db.barcode_inventory import (
+                add_barcode_inventory_stock,
+                deduct_barcode_inventory_stock,
+                get_bill_inventory_deductions,
+                list_barcode_inventory,
+                record_bill_inventory_deductions,
+            )
+
+            all_inv_items = list_barcode_inventory(self._connection)
+            inv_by_id = {item.id: item for item in all_inv_items}
+            inv_by_desc = {item.detail.strip().lower(): item for item in all_inv_items}
+
+            # A. First accumulate inventory items directly from bill line items in the table
+            for line_item in lines:
+                desc_clean = line_item["description"].strip().lower()
+                if desc_clean in inv_by_desc:
+                    inv_obj = inv_by_desc[desc_clean]
+                    deductions_by_id[inv_obj.id] = deductions_by_id.get(inv_obj.id, 0.0) + float(line_item["quantity"])
+
+            # B. Add any raw materials explicitly committed via costing drawer for custom lines
+            for mat_list in self._committed_inventory_materials.values():
+                for item_id, qty in mat_list:
+                    if item_id not in deductions_by_id:
+                        deductions_by_id[item_id] = deductions_by_id.get(item_id, 0.0) + float(qty)
+
+            # 2. Pre-save stock validation & 0-stock check
+            if is_editing and self._editing_bill_id is not None:
+                old_deductions = get_bill_inventory_deductions(self._connection, self._editing_bill_id)
+                # Fallback: if old_deductions is empty (legacy bill), check if previous bill items matched inventory
+                if not old_deductions:
+                    prev_bill = get_bill(self._connection, self._editing_bill_id)
+                    if prev_bill and prev_bill.items:
+                        for prev_item in prev_bill.items:
+                            prev_desc = prev_item.description.strip().lower()
+                            if prev_desc in inv_by_desc:
+                                p_id = inv_by_desc[prev_desc].id
+                                old_deductions[p_id] = old_deductions.get(p_id, 0.0) + float(prev_item.quantity)
+
+                # Validate differential stock needed (delta = new_qty - old_qty)
+                for item_id, new_qty in deductions_by_id.items():
+                    old_qty = old_deductions.get(item_id, 0.0)
+                    delta = new_qty - old_qty
+                    if delta > 0:
+                        inv_item = inv_by_id.get(item_id)
+                        current_stock = inv_item.quantity if inv_item else 0.0
+                        item_name = inv_item.detail if inv_item else f"Item #{item_id}"
+                        if current_stock <= 0:
+                            QMessageBox.warning(
+                                self,
+                                "Out of Stock",
+                                f"Material '{item_name}' is currently Out of Stock (Available: 0 units).\n\n"
+                                f"Cannot increase quantity by {delta:g} units on this invoice.",
+                            )
+                            return
+                        if current_stock < delta:
+                            QMessageBox.warning(
+                                self,
+                                "Insufficient Stock",
+                                f"Insufficient stock for '{item_name}'.\n\n"
+                                f"Available in Inventory: {current_stock:g} units\n"
+                                f"Additional Required: {delta:g} units\n"
+                                f"(Changing from {old_qty:g} to {new_qty:g})\n\n"
+                                "Please reduce the quantity or restock the item in Inventory.",
+                            )
+                            return
+            else:
+                # New bill: validate every required inventory item
+                for item_id, needed_qty in deductions_by_id.items():
+                    if needed_qty > 0:
+                        inv_item = inv_by_id.get(item_id)
+                        current_stock = inv_item.quantity if inv_item else 0.0
+                        item_name = inv_item.detail if inv_item else f"Item #{item_id}"
+                        if current_stock <= 0:
+                            QMessageBox.warning(
+                                self,
+                                "Out of Stock",
+                                f"Material '{item_name}' is currently Out of Stock (Available: 0 units).\n\n"
+                                "Cannot generate invoice with zero inventory.",
+                            )
+                            return
+                        if current_stock < needed_qty:
+                            QMessageBox.warning(
+                                self,
+                                "Insufficient Stock",
+                                f"Insufficient stock for '{item_name}'.\n\n"
+                                f"Available in Inventory: {current_stock:g} units\n"
+                                f"Required for Invoice: {needed_qty:g} units\n\n"
+                                "Please reduce the quantity or restock the item in Inventory.",
+                            )
+                            return
+        except Exception as pre_err:
+            print(f"Warning during inventory pre-validation: {pre_err}")
+
         try:
             if is_editing:
                 update_bill(
@@ -1195,40 +1293,39 @@ class NewJobPage(QWidget):
             QMessageBox.critical(self, f"Error {action_text} Invoice", str(exc))
             return
 
-        # Deduct barcode inventory stock for any materials used in costing or in bill lines
+        # 3. Apply stock adjustments & update recorded deductions
         try:
-            from app.db.barcode_inventory import deduct_barcode_inventory_stock, list_barcode_inventory
+            from app.db.barcode_inventory import (
+                add_barcode_inventory_stock,
+                deduct_barcode_inventory_stock,
+                record_bill_inventory_deductions,
+            )
 
-            deductions_by_id: dict[int, float] = {}
+            if is_editing and self._editing_bill_id is not None:
+                # A. Apply deltas for current items
+                for item_id, new_qty in deductions_by_id.items():
+                    old_qty = old_deductions.get(item_id, 0.0)
+                    delta = new_qty - old_qty
+                    if delta > 0:
+                        deduct_barcode_inventory_stock(self._connection, item_id, delta)
+                    elif delta < 0:
+                        add_barcode_inventory_stock(self._connection, item_id, abs(delta))
 
-            # 1. From committed materials via costing drawer 'Apply'
-            for mat_list in self._committed_inventory_materials.values():
-                for item_id, qty in mat_list:
-                    deductions_by_id[item_id] = deductions_by_id.get(item_id, 0.0) + float(qty)
+                # B. Refund items that were in old bill but removed/omitted now
+                for old_item_id, old_qty in old_deductions.items():
+                    if old_item_id not in deductions_by_id and old_qty > 0:
+                        add_barcode_inventory_stock(self._connection, old_item_id, old_qty)
 
-            # 2. If no committed drawer materials, check currently active costing drawer
-            if not deductions_by_id and hasattr(self, "_costing_drawer") and self._costing_drawer:
-                for item_id, qty in self._costing_drawer.get_selected_inventory_materials():
-                    deductions_by_id[item_id] = deductions_by_id.get(item_id, 0.0) + float(qty)
+                # C. Save the new deduction state
+                record_bill_inventory_deductions(self._connection, bill_id, deductions_by_id)
+            else:
+                # New bill: deduct all required quantities
+                for item_id, needed_qty in deductions_by_id.items():
+                    if needed_qty > 0:
+                        deduct_barcode_inventory_stock(self._connection, item_id, needed_qty)
 
-            # 3. For any bill line description matching an inventory item (case-insensitive)
-            all_inv_items = list_barcode_inventory(self._connection)
-            inv_by_desc = {item.detail.strip().lower(): item for item in all_inv_items}
-            for line_item in lines:
-                desc_clean = line_item["description"].strip().lower()
-                if desc_clean in inv_by_desc:
-                    inv_obj = inv_by_desc[desc_clean]
-                    # If this item was not already accounted for by costing drawer, deduct the bill line quantity
-                    if inv_obj.id not in deductions_by_id:
-                        deductions_by_id[inv_obj.id] = float(line_item["quantity"])
-
-            # Execute stock deduction
-            for item_id, used_qty in deductions_by_id.items():
-                if used_qty > 0:
-                    try:
-                        deduct_barcode_inventory_stock(self._connection, item_id, used_qty)
-                    except Exception as err:
-                        print(f"Warning: could not deduct inventory item {item_id}: {err}")
+                # Record deductions for this new bill
+                record_bill_inventory_deductions(self._connection, bill_id, deductions_by_id)
 
             self._committed_inventory_materials.clear()
             if hasattr(self, "_costing_drawer") and self._costing_drawer:

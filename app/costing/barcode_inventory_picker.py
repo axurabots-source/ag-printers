@@ -293,7 +293,8 @@ class SearchableProductSelect(QFrame):
     def set_current_item(self, item: BarcodeInventoryItem | None) -> None:
         self._current_item = item
         if item is not None:
-            self._lbl_text.setText(f"{item.detail}  ·  Rs. {item.rate:,.2f}  ·  Stock: {item.quantity:,.0f}")
+            stock_str = f"Stock: {item.quantity:,.0f}" if item.quantity > 0 else "Stock: 0 ⚠️ (OUT OF STOCK)"
+            self._lbl_text.setText(f"{item.detail}  ·  Rs. {item.rate:,.2f}  ·  {stock_str}")
             self.setToolTip(f"In Stock: {item.quantity:,.0f} units | Unit Rate: Rs. {item.rate:,.2f}")
         else:
             self._lbl_text.setText("No items in Barcode Inventory (Go to Inventory in sidebar)")
@@ -339,7 +340,8 @@ class SearchableProductSelect(QFrame):
             if not q or q in it.detail.lower():
                 w_item = QListWidgetItem()
                 w_item.setData(Qt.ItemDataRole.UserRole, it)
-                w_item.setText(f"{it.detail}\n  ↳ Rate: Rs. {it.rate:,.2f}   |   Stock: {it.quantity:,.0f} units")
+                stock_tag = f"Stock: {it.quantity:,.0f} units" if it.quantity > 0 else "Stock: 0 units ⚠️ (OUT OF STOCK)"
+                w_item.setText(f"{it.detail}\n  ↳ Rate: Rs. {it.rate:,.2f}   |   {stock_tag}")
                 self._list_widget.addItem(w_item)
                 matched += 1
 
@@ -582,6 +584,26 @@ class BarcodeInventoryCostingWidget(QFrame):
         qty = max(0.01, self._input_qty.value())
         rate = max(0.0, self._input_rate.value())
 
+        if item.quantity <= 0:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Out of Stock",
+                f"Material '{item.detail}' is Out of Stock (0 units available).\n\n"
+                "Please restock this item in Barcode Inventory before adding it to jobs.",
+            )
+            return
+
+        if qty > item.quantity:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Insufficient Stock",
+                f"Material '{item.detail}' only has {item.quantity:g} units available in inventory,\n"
+                f"but {qty:g} units were entered.",
+            )
+            return
+
         # Check if already added
         for existing in self._rows:
             if existing.item_id == item.id:
@@ -661,15 +683,7 @@ class BarcodeInventoryCostingWidget(QFrame):
 
     def get_selected_materials(self) -> list[tuple[int, float]]:
         """List of (item_id, quantity) for all chosen materials to deduct on bill save."""
-        if self._rows:
-            return [(r.item_id, float(r.qty_spin.value())) for r in self._rows if r.item_id]
-
-        item = self._combo.current_item()
-        if isinstance(item, BarcodeInventoryItem) and item.id:
-            qty = float(self._input_qty.value())
-            if qty > 0:
-                return [(item.id, qty)]
-        return []
+        return [(r.item_id, float(r.qty_spin.value())) for r in self._rows if r.item_id]
 
     def clear(self) -> None:
         """Clear all selected materials and reload inventory stock."""

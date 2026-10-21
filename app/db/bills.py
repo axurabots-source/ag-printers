@@ -663,12 +663,21 @@ def get_gate_pass(
 
 
 def delete_bill(connection: sqlite3.Connection, bill_id: int) -> bool:
-    """Delete a bill; its challan and its bill items go with it."""
+    """Delete a bill; its challan and its bill items go with it, restoring any deducted inventory stock."""
     if (
         connection.execute("SELECT 1 FROM bills WHERE id = ?", (bill_id,)).fetchone()
         is None
     ):
         return False
+
+    # Restore deducted barcode inventory materials back to stock before deleting bill
+    try:
+        from app.db.barcode_inventory import restore_bill_inventory_deductions
+
+        restore_bill_inventory_deductions(connection, bill_id)
+    except Exception as exc:
+        print(f"Warning: could not restore inventory for bill {bill_id}: {exc}")
+
     connection.execute("DELETE FROM bills WHERE id = ?", (bill_id,))
     connection.commit()
     return True

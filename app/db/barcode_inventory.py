@@ -158,3 +158,46 @@ def add_barcode_inventory_stock(
     connection.commit()
 
 
+def get_bill_inventory_deductions(
+    connection: sqlite3.Connection, bill_id: int
+) -> dict[int, float]:
+    """Get a mapping of {inventory_item_id: quantity} currently deducted by this bill."""
+    sql = """
+        SELECT inventory_item_id, SUM(quantity) AS qty
+        FROM bill_inventory_deductions
+        WHERE bill_id = ?
+        GROUP BY inventory_item_id
+    """
+    rows = connection.execute(sql, (bill_id,)).fetchall()
+    return {int(r["inventory_item_id"]): float(r["qty"] or 0.0) for r in rows}
+
+
+def record_bill_inventory_deductions(
+    connection: sqlite3.Connection, bill_id: int, deductions: dict[int, float]
+) -> None:
+    """Replace the recorded inventory deductions for a bill with the new state."""
+    connection.execute("DELETE FROM bill_inventory_deductions WHERE bill_id = ?", (bill_id,))
+    for item_id, qty in deductions.items():
+        if qty > 0:
+            connection.execute(
+                """
+                INSERT INTO bill_inventory_deductions (bill_id, inventory_item_id, quantity)
+                VALUES (?, ?, ?)
+                """,
+                (bill_id, int(item_id), float(qty)),
+            )
+    connection.commit()
+
+
+def restore_bill_inventory_deductions(
+    connection: sqlite3.Connection, bill_id: int
+) -> None:
+    """Refund any stock deducted by this bill back to barcode_inventory and delete the records."""
+    deductions = get_bill_inventory_deductions(connection, bill_id)
+    for item_id, qty in deductions.items():
+        if qty > 0:
+            add_barcode_inventory_stock(connection, item_id, qty)
+    connection.execute("DELETE FROM bill_inventory_deductions WHERE bill_id = ?", (bill_id,))
+    connection.commit()
+
+

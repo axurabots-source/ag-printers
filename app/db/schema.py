@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlite3
 
 #: Highest schema version known to this build of the application.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 #: Ordered migrations: version -> SQL script.
 MIGRATIONS: dict[int, str] = {
@@ -284,6 +284,25 @@ MIGRATIONS: dict[int, str] = {
     15: """
     ALTER TABLE bills ADD COLUMN customer_po TEXT NOT NULL DEFAULT '';
     ALTER TABLE gate_passes ADD COLUMN customer_po TEXT NOT NULL DEFAULT '';
+    """,
+    16: """
+    CREATE TABLE IF NOT EXISTS bill_inventory_deductions (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        bill_id           INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+        inventory_item_id INTEGER NOT NULL REFERENCES barcode_inventory(id) ON DELETE RESTRICT,
+        quantity          REAL    NOT NULL DEFAULT 0,
+        created_at        TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+        updated_at        TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_bill_inv_deduct_bill ON bill_inventory_deductions(bill_id);
+    CREATE INDEX IF NOT EXISTS idx_bill_inv_deduct_item ON bill_inventory_deductions(inventory_item_id);
+
+    -- Seed existing deductions for previous bills so editing them does not cause double-deductions
+    INSERT INTO bill_inventory_deductions (bill_id, inventory_item_id, quantity)
+    SELECT bi.bill_id, inv.id, bi.quantity
+    FROM bill_items bi
+    JOIN barcode_inventory inv ON lower(trim(inv.detail)) = lower(trim(bi.description))
+    WHERE bi.quantity > 0;
     """,
 }
 
