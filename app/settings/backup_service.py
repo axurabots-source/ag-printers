@@ -47,6 +47,7 @@ def _get_table_counts(connection: sqlite3.Connection) -> dict[str, int]:
         "costing_lines",
         "party_rates",
         "barcode_inventory",
+        "barcode_inventory_in_logs",
         "bill_inventory_deductions",
     ]
     counts: dict[str, int] = {}
@@ -361,6 +362,7 @@ def clear_business_data(connection: sqlite3.Connection) -> dict[str, Any]:
         "po_items",
         "purchase_orders",
         "party_rates",
+        "barcode_inventory_in_logs",
         "barcode_inventory",
         "parties",
     ]

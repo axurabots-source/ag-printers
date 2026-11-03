@@ -16,8 +16,17 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from PySide6.QtCore import QDate, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFocusEvent, QIcon
+from PySide6.QtCore import QDate, QMimeData, QPoint, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDrag,
+    QFocusEvent,
+    QFont,
+    QIcon,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -56,7 +65,7 @@ from app.ui.theme import CHECK_SVG, EYE_SVG, REFRESH_SVG, TRASH_SVG
 class CleanTableSpinBox(QDoubleSpinBox):
     """Smart numeric spinbox for Bill Items table:
     - Auto-selects text on click/focus so typing replaces the existing 0 immediately.
-    - Clears the default 0 as soon as the user types a digit (0-9 or .), preventing '05' or '500'.
+    - Displays blank/empty instead of '0' or '0.00' when value is 0.
     - Fully preserves clean numeric typing and formatting.
     """
 
@@ -89,6 +98,28 @@ class CleanTableSpinBox(QDoubleSpinBox):
             orig_kp(e)
         le.keyPressEvent = on_key_press
 
+    def textFromValue(self, val: float) -> str:
+        if val == 0.0:
+            return ""
+        if self.decimals() == 0:
+            return f"{int(val)}"
+        return f"{val:.{self.decimals()}f}"
+
+    def valueFromText(self, text: str) -> float:
+        clean = text.strip()
+        if not clean:
+            return 0.0
+        try:
+            return float(clean)
+        except ValueError:
+            return 0.0
+
+    def validate(self, text: str, pos: int):
+        from PySide6.QtGui import QValidator
+        if not text.strip():
+            return (QValidator.State.Acceptable, text, pos)
+        return super().validate(text, pos)
+
     def focusInEvent(self, event: QFocusEvent) -> None:
         super().focusInEvent(event)
         QTimer.singleShot(0, self.selectAll)
@@ -107,6 +138,176 @@ class NoWheelComboBox(QComboBox):
             event.ignore()
         else:
             super().wheelEvent(event)
+
+
+class DragHandleCell(QFrame):
+    """Interactive drag grip handle and serial number for bill rows (Pick & Drop)."""
+
+    def __init__(self, row_num: int, table: "ReorderableTableWidget", parent=None):
+        super().__init__(parent)
+        self._table = table
+        self._drag_start_pos: QPoint | None = None
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        self.setToolTip("Click & drag to reorder line (Pick & Drop)")
+        self.setObjectName("DragHandleCell")
+        self.setStyleSheet("""
+            QFrame#DragHandleCell {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+            }
+            QFrame#DragHandleCell:hover {
+                background-color: #F1F5F9;
+                border: 1px solid #CBD5E1;
+            }
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._grip_icon = QLabel("⠿")
+        self._grip_icon.setStyleSheet("color: #94A3B8; font-size: 14px; font-weight: bold;")
+        self._grip_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        self._sr_label = QLabel(str(row_num))
+        self._sr_label.setObjectName("FieldValue")
+        self._sr_label.setStyleSheet("color: #475569; font-weight: 700; font-size: 13px;")
+        self._sr_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        layout.addWidget(self._grip_icon)
+        layout.addWidget(self._sr_label)
+
+    def set_row_number(self, num: int) -> None:
+        self._sr_label.setText(str(num))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start_pos:
+            if (event.pos() - self._drag_start_pos).manhattanLength() >= 5:
+                self._start_drag()
+                self._drag_start_pos = None
+                return
+        super().mouseMoveEvent(event)
+
+    def _get_current_row(self) -> int:
+        for r in range(self._table.rowCount()):
+            if self._table.cellWidget(r, 0) is self:
+                return r
+        return -1
+
+    def _start_drag(self) -> None:
+        row = self._get_current_row()
+        if row == -1:
+            return
+
+        desc_w = self._table.cellWidget(row, 1)
+        desc_text = desc_w.text().strip() if isinstance(desc_w, QLineEdit) else ""
+        snippet = f": {desc_text[:20]}..." if len(desc_text) > 20 else (f": {desc_text}" if desc_text else "")
+
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData("application/x-ag-bill-row", str(row).encode())
+        drag.setMimeData(mime)
+
+        # Floating preview badge
+        pixmap = QPixmap(190, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        bg_rect = QRectF(1, 1, 188, 30)
+        painter.setBrush(QColor("#EFF6FF"))
+        painter.setPen(QPen(QColor("#2563EB"), 1.5))
+        painter.drawRoundedRect(bg_rect, 6, 6)
+
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        painter.setPen(QColor("#1D4ED8"))
+        painter.drawText(bg_rect, Qt.AlignmentFlag.AlignCenter, f"⠿ Line {row + 1}{snippet}")
+        painter.end()
+
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(95, 16))
+        drag.exec(Qt.DropAction.MoveAction)
+
+
+class ReorderableTableWidget(QTableWidget):
+    """QTableWidget supporting Pick & Drop row reordering with visual drop indicator."""
+
+    row_reordered = Signal(int, int)
+
+    def __init__(self, rows: int, cols: int, parent=None):
+        super().__init__(rows, cols, parent)
+        self.setAcceptDrops(True)
+        self._drop_target_row: int | None = None
+        self._drop_position: str = "before"
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-ag-bill-row"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat("application/x-ag-bill-row"):
+            pos = event.position().toPoint()
+            row = self.rowAt(pos.y())
+            if row >= 0:
+                self._drop_target_row = row
+                row_y = self.rowViewportPosition(row)
+                row_h = self.rowHeight(row)
+                self._drop_position = "after" if (pos.y() - row_y) > (row_h / 2) else "before"
+                self.viewport().update()
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dragLeaveEvent(self, event):
+        self._drop_target_row = None
+        self.viewport().update()
+        event.accept()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasFormat("application/x-ag-bill-row"):
+            src_row = int(event.mimeData().data("application/x-ag-bill-row").data().decode())
+            target_row = self._drop_target_row
+            drop_pos = self._drop_position
+            self._drop_target_row = None
+            self.viewport().update()
+
+            if target_row is not None and 0 <= target_row < self.rowCount():
+                dest_row = target_row if drop_pos == "before" else target_row + 1
+                if dest_row > src_row:
+                    dest_row -= 1
+                if dest_row != src_row and 0 <= dest_row < self.rowCount():
+                    self.row_reordered.emit(src_row, dest_row)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._drop_target_row is not None and 0 <= self._drop_target_row < self.rowCount():
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            pen = QPen(QColor("#2563EB"), 3.0)
+            painter.setPen(pen)
+            painter.setBrush(QColor("#2563EB"))
+
+            row_y = self.rowViewportPosition(self._drop_target_row)
+            if self._drop_position == "after":
+                row_y += self.rowHeight(self._drop_target_row)
+
+            vw = self.viewport().width()
+            painter.drawLine(8, row_y, vw - 8, row_y)
+            painter.drawEllipse(QPoint(8, row_y), 4, 4)
+            painter.drawEllipse(QPoint(vw - 8, row_y), 4, 4)
+            painter.end()
 
 
 class NewJobPage(QWidget):
@@ -337,7 +538,7 @@ class NewJobPage(QWidget):
         grid_title.setObjectName("SectionLabel")
         t_header.addWidget(grid_title)
 
-        hint_badge = QLabel("Next row adds automatically as you type. Use Tab or Enter to navigate.")
+        hint_badge = QLabel("Drag ⠿ to pick & drop lines up/down. Next row adds automatically as you type.")
         hint_badge.setObjectName("FieldLabel")
         t_header.addWidget(hint_badge)
         t_header.addStretch(1)
@@ -352,14 +553,15 @@ class NewJobPage(QWidget):
         t_card_layout.addLayout(t_header)
 
         # Table Widget
-        self._table = QTableWidget(0, 9)
+        self._table = ReorderableTableWidget(0, 9)
         self._table.setObjectName("POTable")
+        self._table.row_reordered.connect(self._reorder_row)
         self._table.setHorizontalHeaderLabels([
             "SR NO",
             "DESCRIPTION *",
-            "QTY *",
+            "QTY",
             "COST (RS.)",
-            "SELL (RS.) *",
+            "SELL (RS.)",
             "TOTAL (RS.)",
             "PROFIT/UNIT",
             "TOTAL PROFIT",
@@ -396,7 +598,7 @@ class NewJobPage(QWidget):
         header = self._table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self._table.setColumnWidth(0, 55)
+        self._table.setColumnWidth(0, 68)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         self._table.setColumnWidth(2, 75)
@@ -411,7 +613,7 @@ class NewJobPage(QWidget):
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
         self._table.setColumnWidth(7, 105)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)
-        self._table.setColumnWidth(8, 44)
+        self._table.setColumnWidth(8, 92)
 
         self._table.currentCellChanged.connect(self._on_table_cell_changed)
 
@@ -657,12 +859,9 @@ class NewJobPage(QWidget):
         row = self._table.rowCount()
         self._table.insertRow(row)
 
-        # 0. Sr. No
-        sr_lbl = QLabel(str(row + 1))
-        sr_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sr_lbl.setObjectName("FieldValue")
-        sr_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._table.setCellWidget(row, 0, sr_lbl)
+        # 0. Sr. No with Drag Grip Handle (Pick & Drop)
+        handle = DragHandleCell(row + 1, self._table)
+        self._table.setCellWidget(row, 0, handle)
 
         # 1. Description (editable text)
         desc_edit = QLineEdit()
@@ -698,14 +897,14 @@ class NewJobPage(QWidget):
         rate_spin.lineEdit().returnPressed.connect(self._on_rate_enter)
 
         # 5. Total Amount (calculated display: qty * sell_rate, centralized)
-        amt_lbl = QLabel("0.00")
+        amt_lbl = QLabel("")
         amt_lbl.setObjectName("RowAmount")
         amt_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         amt_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._table.setCellWidget(row, 5, amt_lbl)
 
         # 6. Profit Per Unit (calculated display: sell_rate - cost_price, non-editable, centralized)
-        unit_profit_lbl = QLabel("0.00")
+        unit_profit_lbl = QLabel("")
         unit_profit_lbl.setObjectName("RowUnitProfit")
         unit_profit_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         unit_profit_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -713,28 +912,76 @@ class NewJobPage(QWidget):
         self._table.setCellWidget(row, 6, unit_profit_lbl)
 
         # 7. Total Net Profit (calculated display: (sell_rate - cost_price) * qty, non-editable, centralized)
-        profit_lbl = QLabel("0.00")
+        profit_lbl = QLabel("")
         profit_lbl.setObjectName("RowProfit")
         profit_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         profit_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         profit_lbl.setStyleSheet("font-size: 12px; color: #94A3B8; qproperty-alignment: AlignCenter;")
         self._table.setCellWidget(row, 7, profit_lbl)
 
-        # 8. Remove Button (shifted left away from the right table border)
+        # 8. Reorder Buttons (Up / Down) & Remove Button
         del_wrap = QWidget()
         del_wrap.setStyleSheet("background: transparent; border: none;")
         del_layout = QHBoxLayout(del_wrap)
-        del_layout.setContentsMargins(0, 0, 10, 0)
+        del_layout.setContentsMargins(0, 0, 4, 0)
+        del_layout.setSpacing(3)
         del_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        up_btn = QPushButton("▲")
+        up_btn.setObjectName("RowUpButton")
+        up_btn.setFixedSize(20, 22)
+        up_btn.setToolTip("Move line up")
+        up_btn.setStyleSheet("""
+            QPushButton#RowUpButton {
+                background: #F8FAFC;
+                color: #64748B;
+                border: 1px solid #E2E8F0;
+                border-radius: 4px;
+                font-size: 8px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QPushButton#RowUpButton:hover {
+                background: #E2E8F0;
+                color: #1E293B;
+                border-color: #CBD5E1;
+            }
+        """)
+        up_btn.clicked.connect(self._on_move_up_clicked)
+        del_layout.addWidget(up_btn)
+
+        down_btn = QPushButton("▼")
+        down_btn.setObjectName("RowDownButton")
+        down_btn.setFixedSize(20, 22)
+        down_btn.setToolTip("Move line down")
+        down_btn.setStyleSheet("""
+            QPushButton#RowDownButton {
+                background: #F8FAFC;
+                color: #64748B;
+                border: 1px solid #E2E8F0;
+                border-radius: 4px;
+                font-size: 8px;
+                font-weight: bold;
+                padding: 0px;
+            }
+            QPushButton#RowDownButton:hover {
+                background: #E2E8F0;
+                color: #1E293B;
+                border-color: #CBD5E1;
+            }
+        """)
+        down_btn.clicked.connect(self._on_move_down_clicked)
+        del_layout.addWidget(down_btn)
 
         del_btn = QPushButton()
         del_btn.setObjectName("RemoveRowButton")
         del_btn.setIcon(QIcon(TRASH_SVG))
-        del_btn.setIconSize(QSize(15, 15))
-        del_btn.setFixedSize(30, 30)
+        del_btn.setIconSize(QSize(14, 14))
+        del_btn.setFixedSize(24, 24)
         del_btn.setToolTip("Remove this row")
         del_btn.clicked.connect(self._on_remove_clicked)
         del_layout.addWidget(del_btn)
+
         self._table.setCellWidget(row, 8, del_wrap)
 
         self._refresh_sr_numbers()
@@ -756,11 +1003,13 @@ class NewJobPage(QWidget):
         if total_rows > 0:
             last_desc_w = self._table.cellWidget(total_rows - 1, 1)
             last_qty_w = self._table.cellWidget(total_rows - 1, 2)
+            last_rate_w = self._table.cellWidget(total_rows - 1, 4)
 
             desc = last_desc_w.text().strip() if isinstance(last_desc_w, QLineEdit) else ""
             qty = last_qty_w.value() if isinstance(last_qty_w, QDoubleSpinBox) else 0.0
+            rate = last_rate_w.value() if isinstance(last_rate_w, QDoubleSpinBox) else 0.0
 
-            if desc or qty > 0:
+            if desc or qty > 0 or rate > 0:
                 self._is_updating_table = True
                 self.add_row(focus_desc=False)
                 self._is_updating_table = False
@@ -786,14 +1035,108 @@ class NewJobPage(QWidget):
             if isinstance(next_desc, QLineEdit):
                 next_desc.setFocus()
 
+    def _find_row_for_widget(self, widget: QWidget | None) -> int:
+        if widget is None:
+            return -1
+        for r in range(self._table.rowCount()):
+            cell_w = self._table.cellWidget(r, 8)
+            if cell_w is widget or (cell_w is not None and widget in cell_w.findChildren(QPushButton)):
+                return r
+            cell_0 = self._table.cellWidget(r, 0)
+            if cell_0 is widget or (cell_0 is not None and widget in cell_0.findChildren(QWidget)):
+                return r
+        return -1
+
+    def _on_move_up_clicked(self) -> None:
+        """Move the clicked row 1 step up."""
+        sender_btn = self.sender()
+        row = self._find_row_for_widget(sender_btn)
+        if row > 0:
+            self._reorder_row(row, row - 1)
+
+    def _on_move_down_clicked(self) -> None:
+        """Move the clicked row 1 step down."""
+        sender_btn = self.sender()
+        row = self._find_row_for_widget(sender_btn)
+        if row != -1 and row < self._table.rowCount() - 1:
+            self._reorder_row(row, row + 1)
+
     def _on_remove_clicked(self) -> None:
         """Dynamic sender-based row removal avoiding index mismatch or signal bugs."""
         sender_btn = self.sender()
+        row = self._find_row_for_widget(sender_btn)
+        if row != -1:
+            self._remove_row(row)
+
+    def _reorder_row(self, from_idx: int, to_idx: int) -> None:
+        """Move a row from from_idx to to_idx without destroying any Qt widgets."""
+        if from_idx == to_idx:
+            return
+        if not (0 <= from_idx < self._table.rowCount() and 0 <= to_idx < self._table.rowCount()):
+            return
+
+        # 1. Collect all row data in current order
+        rows_data = []
         for r in range(self._table.rowCount()):
-            cell_w = self._table.cellWidget(r, 8)
-            if cell_w is sender_btn or (cell_w is not None and sender_btn in cell_w.findChildren(QPushButton)):
-                self._remove_row(r)
-                break
+            desc_w = self._table.cellWidget(r, 1)
+            qty_w = self._table.cellWidget(r, 2)
+            cost_w = self._table.cellWidget(r, 3)
+            rate_w = self._table.cellWidget(r, 4)
+
+            desc = desc_w.text() if isinstance(desc_w, QLineEdit) else ""
+            qty = qty_w.value() if isinstance(qty_w, QDoubleSpinBox) else 0.0
+            cost = cost_w.value() if isinstance(cost_w, QDoubleSpinBox) else 0.0
+            rate = rate_w.value() if isinstance(rate_w, QDoubleSpinBox) else 0.0
+            committed = self._committed_inventory_materials.get(r, [])
+
+            rows_data.append({
+                "desc": desc,
+                "qty": qty,
+                "cost": cost,
+                "rate": rate,
+                "committed": committed,
+            })
+
+        # 2. Reorder in list
+        item = rows_data.pop(from_idx)
+        rows_data.insert(to_idx, item)
+
+        # 3. Apply back to existing widgets
+        self._is_updating_table = True
+        new_committed = {}
+        for r, data in enumerate(rows_data):
+            desc_w = self._table.cellWidget(r, 1)
+            qty_w = self._table.cellWidget(r, 2)
+            cost_w = self._table.cellWidget(r, 3)
+            rate_w = self._table.cellWidget(r, 4)
+
+            if isinstance(desc_w, QLineEdit):
+                desc_w.setText(data["desc"])
+            if isinstance(qty_w, QDoubleSpinBox):
+                qty_w.setValue(data["qty"])
+            if isinstance(cost_w, QDoubleSpinBox):
+                cost_w.setValue(data["cost"])
+            if isinstance(rate_w, QDoubleSpinBox):
+                rate_w.setValue(data["rate"])
+
+            if data["committed"]:
+                new_committed[r] = data["committed"]
+
+        self._committed_inventory_materials = new_committed
+        self._is_updating_table = False
+
+        self._refresh_sr_numbers()
+        self._sync_totals()
+
+        # Update costing drawer targets if available
+        if hasattr(self, "_costing_drawer") and self._costing_drawer:
+            items_for_drawer = self._collect_lines()
+            self._costing_drawer.update_item_list(items_for_drawer)
+
+        # Focus target row description
+        target_desc = self._table.cellWidget(to_idx, 1)
+        if isinstance(target_desc, QLineEdit):
+            target_desc.setFocus()
 
     def _remove_row(self, row_idx: int) -> None:
         """Remove a row and refresh table state."""
@@ -822,18 +1165,22 @@ class NewJobPage(QWidget):
         if last_r >= 0:
             last_desc = self._table.cellWidget(last_r, 1)
             last_qty = self._table.cellWidget(last_r, 2)
+            last_rate = self._table.cellWidget(last_r, 4)
             d_val = last_desc.text().strip() if isinstance(last_desc, QLineEdit) else ""
             q_val = last_qty.value() if isinstance(last_qty, QDoubleSpinBox) else 0.0
-            if d_val or q_val > 0:
+            r_val = last_rate.value() if isinstance(last_rate, QDoubleSpinBox) else 0.0
+            if d_val or q_val > 0 or r_val > 0:
                 self.add_row(focus_desc=False)
 
         self._is_updating_table = False
 
     def _refresh_sr_numbers(self) -> None:
         for r in range(self._table.rowCount()):
-            sr_widget = self._table.cellWidget(r, 0)
-            if isinstance(sr_widget, QLabel):
-                sr_widget.setText(str(r + 1))
+            cell_w = self._table.cellWidget(r, 0)
+            if isinstance(cell_w, DragHandleCell):
+                cell_w.set_row_number(r + 1)
+            elif isinstance(cell_w, QLabel):
+                cell_w.setText(str(r + 1))
 
     def clear_table(self) -> None:
         self._is_updating_table = True
@@ -880,39 +1227,39 @@ class NewJobPage(QWidget):
             line_total_profit = (rate_p - cost_p) * qty
 
             if isinstance(amt_widget, QLabel):
-                amt_widget.setText(f"{line_amt:,.2f}")
+                amt_widget.setText(f"{line_amt:,.2f}" if line_amt > 0 else "")
                 amt_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             if isinstance(unit_profit_widget, QLabel):
                 unit_profit_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                if cost_p > 0:
+                if cost_p > 0 and rate_p > 0:
                     u_sign = "+" if line_unit_profit >= 0 else ""
                     u_color = "#047857" if line_unit_profit >= 0 else "#DC2626"
                     unit_profit_widget.setText(f"{u_sign}{line_unit_profit:,.2f}")
                     unit_profit_widget.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {u_color}; qproperty-alignment: AlignCenter;")
                 else:
-                    unit_profit_widget.setText("0.00")
+                    unit_profit_widget.setText("")
                     unit_profit_widget.setStyleSheet("font-size: 12px; color: #94A3B8; qproperty-alignment: AlignCenter;")
 
             if isinstance(total_profit_widget, QLabel):
                 total_profit_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                if cost_p > 0:
+                if cost_p > 0 and rate_p > 0 and qty > 0:
                     has_any_cost = True
                     sign = "+" if line_total_profit >= 0 else ""
                     color = "#047857" if line_total_profit >= 0 else "#DC2626"
                     total_profit_widget.setText(f"{sign}{line_total_profit:,.2f}")
                     total_profit_widget.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {color}; qproperty-alignment: AlignCenter;")
                 else:
-                    total_profit_widget.setText("0.00")
+                    total_profit_widget.setText("")
                     total_profit_widget.setStyleSheet("font-size: 12px; color: #94A3B8; qproperty-alignment: AlignCenter;")
 
             desc = desc_widget.text().strip() if isinstance(desc_widget, QLineEdit) else ""
-            if desc or qty > 0:
+            if desc or qty > 0 or rate_p > 0:
                 total_items += 1
                 total_qty += qty
                 grand_total += line_amt
                 total_cost += line_cost
-                if cost_p > 0:
+                if cost_p > 0 and qty > 0 and rate_p > 0:
                     total_profit += line_total_profit
 
             items_for_drawer.append({
@@ -1089,8 +1436,8 @@ class NewJobPage(QWidget):
             cost_price = cost_w.value() if isinstance(cost_w, QDoubleSpinBox) else 0.0
             rate = rate_w.value() if isinstance(rate_w, QDoubleSpinBox) else 0.0
 
-            # Only accept lines that have either a description or positive quantity
-            if desc or qty > 0:
+            # Only accept lines that have either a description or positive quantity or rate
+            if desc or qty > 0 or rate > 0:
                 lines.append({
                     "row_index": r + 1,
                     "description": desc,
@@ -1126,9 +1473,6 @@ class NewJobPage(QWidget):
             if not item["description"]:
                 QMessageBox.warning(self, "Missing Description", f"Line {item['row_index']} requires a description.")
                 return
-            if item["quantity"] <= 0:
-                QMessageBox.warning(self, "Invalid Quantity", f"Line {item['row_index']} requires a quantity greater than zero.")
-                return
 
         dlg = A4PrintPreviewDialog(data, parent=self.window())
         dlg.exec()
@@ -1141,16 +1485,13 @@ class NewJobPage(QWidget):
         data = self._build_doc_data()
         lines = data["items"]
         if not lines:
-            QMessageBox.warning(self, "No Items", "Please enter at least one line item with description, quantity, and rate.")
+            QMessageBox.warning(self, "No Items", "Please enter at least one line item with a description.")
             return
 
-        # Validate that each entered line has a description and positive values
+        # Validate that each entered line has a description
         for item in lines:
             if not item["description"]:
                 QMessageBox.warning(self, "Missing Description", f"Line {item['row_index']} requires a description.")
-                return
-            if item["quantity"] <= 0:
-                QMessageBox.warning(self, "Invalid Quantity", f"Line {item['row_index']} requires a quantity greater than zero.")
                 return
 
         total_bill_amount = sum(item["quantity"] * item["rate"] for item in lines)
@@ -1178,10 +1519,13 @@ class NewJobPage(QWidget):
 
             # A. First accumulate inventory items directly from bill line items in the table
             for line_item in lines:
+                qty_val = float(line_item.get("quantity", 0.0))
+                if qty_val <= 0:
+                    continue
                 desc_clean = line_item["description"].strip().lower()
                 if desc_clean in inv_by_desc:
                     inv_obj = inv_by_desc[desc_clean]
-                    deductions_by_id[inv_obj.id] = deductions_by_id.get(inv_obj.id, 0.0) + float(line_item["quantity"])
+                    deductions_by_id[inv_obj.id] = deductions_by_id.get(inv_obj.id, 0.0) + qty_val
 
             # B. Add any raw materials explicitly committed via costing drawer for custom lines
             for mat_list in self._committed_inventory_materials.values():

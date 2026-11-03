@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlite3
 
 #: Highest schema version known to this build of the application.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 #: Ordered migrations: version -> SQL script.
 MIGRATIONS: dict[int, str] = {
@@ -303,6 +303,24 @@ MIGRATIONS: dict[int, str] = {
     FROM bill_items bi
     JOIN barcode_inventory inv ON lower(trim(inv.detail)) = lower(trim(bi.description))
     WHERE bi.quantity > 0;
+    """,
+    # V0.17 - Barcode Inventory Inward Stock Logs (Last In tracking)
+    17: """
+    CREATE TABLE IF NOT EXISTS barcode_inventory_in_logs (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        inventory_item_id INTEGER NOT NULL REFERENCES barcode_inventory(id) ON DELETE CASCADE,
+        quantity          REAL    NOT NULL,
+        notes             TEXT    NOT NULL DEFAULT '',
+        created_at        TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_barcode_inv_in_item ON barcode_inventory_in_logs(inventory_item_id);
+    CREATE INDEX IF NOT EXISTS idx_barcode_inv_in_created ON barcode_inventory_in_logs(created_at);
+
+    -- Seed initial stock for existing items in barcode_inventory
+    INSERT INTO barcode_inventory_in_logs (inventory_item_id, quantity, notes, created_at)
+    SELECT id, quantity, 'Initial Stock', created_at
+    FROM barcode_inventory
+    WHERE quantity > 0;
     """,
 }
 

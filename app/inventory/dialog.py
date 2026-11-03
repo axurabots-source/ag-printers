@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from app.db.barcode_inventory import (
     BarcodeInventoryItem,
     create_barcode_inventory_item,
+    delete_barcode_inventory_item,
     update_barcode_inventory_item,
 )
 from app.ui.capitalized_input import CapitalizedLineEdit, capitalize_words
@@ -156,6 +157,28 @@ class BarcodeItemDialog(QDialog):
         # Action Buttons
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
+
+        if is_edit and item is not None:
+            del_btn = QPushButton("Delete Item")
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid #FECACA;
+                    border-radius: 6px;
+                    color: #DC2626;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    background-color: #FEF2F2;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #FEE2E2;
+                    border-color: #FCA5A5;
+                }
+            """)
+            del_btn.clicked.connect(self._delete_current_item)
+            btn_row.addWidget(del_btn)
+
         btn_row.addStretch(1)
 
         cancel_btn = QPushButton("Cancel")
@@ -171,6 +194,23 @@ class BarcodeItemDialog(QDialog):
 
         layout.addLayout(btn_row)
         self._detail_edit.setFocus()
+
+    def _delete_current_item(self) -> None:
+        if self._item is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete '{self._item.detail}' from barcode inventory?\n\nThis will also remove its inward stock history.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                delete_barcode_inventory_item(self._connection, self._item.id)
+                self.accept()
+            except Exception as e:
+                QMessageBox.critical(self, "Error Deleting Item", f"Could not delete barcode inventory item:\n{e}")
 
     def _update_total_preview(self) -> None:
         qty = self._qty_spin.value()
@@ -260,7 +300,13 @@ class AddStockDialog(QDialog):
         self._add_qty_spin.setValue(100.0)
         form.addRow(make_label("Quantity to Add (+) *"), self._add_qty_spin)
 
-        # 3. New Total Preview
+        # 3. Notes / Remarks (Optional)
+        self._notes_edit = CapitalizedLineEdit()
+        self._notes_edit.setObjectName("FormInput")
+        self._notes_edit.setPlaceholderText("e.g. Supplier name, Lot #, PO # (optional)")
+        form.addRow(make_label("Notes / Remarks"), self._notes_edit)
+
+        # 4. New Total Preview
         self._new_total_lbl = QLabel("")
         self._new_total_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #047857; border: none; background: transparent;")
         form.addRow(make_label("New Total Stock"), self._new_total_lbl)
@@ -314,9 +360,10 @@ class AddStockDialog(QDialog):
             QMessageBox.warning(self, "Invalid Quantity", "Please enter a quantity greater than 0.")
             self._add_qty_spin.setFocus()
             return
+        notes = self._notes_edit.text().strip() or "Stock Added"
         try:
             from app.db.barcode_inventory import add_barcode_inventory_stock
-            add_barcode_inventory_stock(self._connection, self._item.id, add_qty)
+            add_barcode_inventory_stock(self._connection, self._item.id, add_qty, notes=notes)
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error Adding Stock", f"Could not update inventory stock:\n{e}")

@@ -231,12 +231,14 @@ class DocumentView(QWidget):
             self._items.insertRow(index)
             description, quantity = row[0], row[1]
             self._items.setItem(index, 0, QTableWidgetItem(str(description)))
-            self._items.setItem(index, 1, QTableWidgetItem(f"{quantity:g}"))
+            qty_text = f"{quantity:g}" if float(quantity or 0) > 0 else ""
+            self._items.setItem(index, 1, QTableWidgetItem(qty_text))
             if show_rates:
-                rate = float(row[2])
-                self._items.setItem(index, 2, QTableWidgetItem(f"{rate:,.2f}"))
-                self._items.setItem(
-                    index, 3, QTableWidgetItem(f"{quantity * rate:,.2f}")
-                )
+                rate = float(row[2] or 0)
+                rate_text = f"{rate:,.2f}" if rate > 0 else ""
+                amt = float(quantity or 0) * rate
+                amt_text = f"{amt:,.2f}" if amt > 0 else ""
+                self._items.setItem(index, 2, QTableWidgetItem(rate_text))
+                self._items.setItem(index, 3, QTableWidgetItem(amt_text))
         self._total.setText(summary)
 

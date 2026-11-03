@@ -28,7 +28,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.bills import Bill, list_bills
+from app.db.parties import list_parties
 from app.jobs.pdf_generator import get_or_create_bill_pdf
+from app.ledger.export_dialog import ExportLedgerPdfDialog
 from app.pdf_settings import open_pdf_file
 from app.ui.calendar import (
     CLEAR_BTN_STYLE,
@@ -110,17 +112,54 @@ class LedgerPage(QWidget):
         self._search.setMinimumWidth(260)
         self._search.textChanged.connect(self.refresh)
 
+        self._export_pdf_btn = QPushButton("📄 Export Statement PDF")
+        self._export_pdf_btn.setObjectName("PrimaryButton")
+        self._export_pdf_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._export_pdf_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0284C7;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 7px 16px;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #0369A1;
+            }
+            QPushButton:pressed {
+                background-color: #075985;
+            }
+        """)
+        self._export_pdf_btn.clicked.connect(self._open_export_dialog)
+
         header_row.addWidget(title)
         header_row.addStretch(1)
         header_row.addWidget(self._search)
+        header_row.addWidget(self._export_pdf_btn)
         layout.addLayout(header_row)
 
-        # Date Filter Row -------------------------------------------------
+        # Filter Row -------------------------------------------------
         filter_row = QHBoxLayout()
         filter_row.setSpacing(10)
 
+        # 1. Party Filter
+        party_lbl = QLabel("Party:")
+        party_lbl.setStyleSheet("color: #475569; font-weight: 600; font-size: 13px;")
+
+        self._party_filter = QComboBox()
+        self._party_filter.setObjectName("PartyFilterCombo")
+        self._party_filter.setStyleSheet(FILTER_COMBO_STYLE)
+        self._party_filter.setMinimumWidth(200)
+        self._party_filter.currentIndexChanged.connect(self._on_party_filter_changed)
+
+        filter_row.addWidget(party_lbl)
+        filter_row.addWidget(self._party_filter)
+
+        # 2. Date Filter
         date_lbl = QLabel("Date Filter:")
-        date_lbl.setStyleSheet("color: #475569; font-weight: 600; font-size: 13px;")
+        date_lbl.setStyleSheet("color: #475569; font-weight: 600; font-size: 13px; margin-left: 6px;")
 
         self._date_mode = QComboBox()
         self._date_mode.setObjectName("DateFilterCombo")
@@ -166,10 +205,10 @@ class LedgerPage(QWidget):
         self._date_to.setVisible(False)
         self._date_to.dateChanged.connect(lambda _d: self.refresh())
 
-        self._clear_date_btn = QPushButton("✕ Clear Date")
-        self._clear_date_btn.setStyleSheet(CLEAR_BTN_STYLE)
-        self._clear_date_btn.setVisible(False)
-        self._clear_date_btn.clicked.connect(self._reset_date_filter)
+        self._clear_filters_btn = QPushButton("✕ Clear Filters")
+        self._clear_filters_btn.setStyleSheet(CLEAR_BTN_STYLE)
+        self._clear_filters_btn.setVisible(False)
+        self._clear_filters_btn.clicked.connect(self._reset_filters)
 
         filter_row.addWidget(date_lbl)
         filter_row.addWidget(self._date_mode)
@@ -178,9 +217,11 @@ class LedgerPage(QWidget):
         filter_row.addWidget(self._date_from)
         filter_row.addWidget(self._range_to_label)
         filter_row.addWidget(self._date_to)
-        filter_row.addWidget(self._clear_date_btn)
+        filter_row.addWidget(self._clear_filters_btn)
         filter_row.addStretch(1)
         layout.addLayout(filter_row)
+
+        self._populate_parties()
 
         # Bary Boxes (Big KPI Summary Cards) ------------------------------
         kpi_row = QHBoxLayout()
@@ -274,6 +315,40 @@ class LedgerPage(QWidget):
     # public
     def reset_to_list(self) -> None:
         """Called by MainWindow when this page is (re-)shown."""
+        self._populate_parties()
+        self.refresh()
+
+    def _populate_parties(self) -> None:
+        """Populate the party filter combo box preserving selection."""
+        if not hasattr(self, "_party_filter"):
+            return
+        curr_id = self._party_filter.currentData()
+        self._party_filter.blockSignals(True)
+        self._party_filter.clear()
+        self._party_filter.addItem("All Parties (All Round)", None)
+        try:
+            for p in list_parties(self._connection):
+                self._party_filter.addItem(p.name, p.id)
+        except Exception:
+            pass
+
+        # Restore previous selection if present
+        found_idx = 0
+        if curr_id is not None:
+            for i in range(self._party_filter.count()):
+                if self._party_filter.itemData(i) == curr_id:
+                    found_idx = i
+                    break
+        self._party_filter.setCurrentIndex(found_idx)
+        self._party_filter.blockSignals(False)
+
+    def _update_clear_button_visibility(self) -> None:
+        is_all_date = (self._date_mode.currentText() == "All Dates")
+        is_all_party = (self._party_filter.currentData() is None)
+        self._clear_filters_btn.setVisible(not (is_all_date and is_all_party))
+
+    def _on_party_filter_changed(self) -> None:
+        self._update_clear_button_visibility()
         self.refresh()
 
     def _get_active_date_range(self) -> tuple[str, str]:
@@ -297,7 +372,6 @@ class LedgerPage(QWidget):
 
     def _on_date_mode_changed(self, index: int) -> None:
         mode = self._date_mode.currentText()
-        is_all = (mode == "All Dates")
         is_single = (mode == "Specific Date")
         is_range = (mode == "Date Range")
 
@@ -306,21 +380,39 @@ class LedgerPage(QWidget):
         self._date_from.setVisible(is_range)
         self._range_to_label.setVisible(is_range)
         self._date_to.setVisible(is_range)
-        self._clear_date_btn.setVisible(not is_all)
+        self._update_clear_button_visibility()
 
         self.refresh()
 
-    def _reset_date_filter(self) -> None:
+    def _reset_filters(self) -> None:
+        self._party_filter.blockSignals(True)
+        self._party_filter.setCurrentIndex(0)
+        self._party_filter.blockSignals(False)
         self._date_mode.setCurrentIndex(0)
 
+    def _open_export_dialog(self) -> None:
+        """Open the interactive modal to customize statement filters and generate PDF."""
+        dlg = ExportLedgerPdfDialog(
+            connection=self._connection,
+            initial_party_id=self._party_filter.currentData(),
+            initial_date_mode=self._date_mode.currentText(),
+            initial_single_date=self._single_date.date(),
+            initial_date_from=self._date_from.date(),
+            initial_date_to=self._date_to.date(),
+            parent=self,
+        )
+        dlg.exec()
+
     def refresh(self, *_args) -> None:
-        """Reload bills from DB using current search and date filter, and update KPI boxes."""
+        """Reload bills from DB using current search, party filter, and date filter, and update KPI boxes."""
         date_from, date_to = self._get_active_date_range()
+        party_id = self._party_filter.currentData() if hasattr(self, "_party_filter") else None
         bills: list[Bill] = list_bills(
             self._connection,
             search=self._search.text(),
             date_from=date_from,
             date_to=date_to,
+            party_id=party_id,
         )
 
         bold = QFont(self.font())
@@ -412,6 +504,11 @@ class LedgerPage(QWidget):
 
         has_rows = bool(bills)
         self._table.setVisible(has_rows)
+        if not has_rows:
+            if party_id is not None:
+                self._empty.setText(f"No bills found for {self._party_filter.currentText()} with current filters.")
+            else:
+                self._empty.setText("No bills found for the selected filter criteria.")
         self._empty.setVisible(not has_rows)
 
         # Update KPI Cards (bary boxes) -----------------------------------
@@ -432,10 +529,13 @@ class LedgerPage(QWidget):
         else:
             period_text = "Selected period"
 
-        self._kpi_bills_sub.setText(period_text)
-
-        self._kpi_revenue_val.setText(f"PKR {total_amount:,.2f}")
-        self._kpi_revenue_sub.setText(f"Gross billed ({period_text})")
+        if party_id is not None:
+            party_name = self._party_filter.currentText()
+            self._kpi_bills_sub.setText(f"{party_name} • {period_text}")
+            self._kpi_revenue_sub.setText(f"{party_name} ({period_text})")
+        else:
+            self._kpi_bills_sub.setText(period_text)
+            self._kpi_revenue_sub.setText(f"Gross billed ({period_text})")
 
         profit_color = "#059669" if total_profit >= 0 else "#DC2626"
         self._kpi_profit_val.setText(f"PKR {total_profit:,.2f}")

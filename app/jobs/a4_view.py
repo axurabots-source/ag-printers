@@ -22,6 +22,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetricsF,
     QPageLayout,
     QPainter,
     QPainterPath,
@@ -93,6 +94,51 @@ def get_document_page_count(data: dict[str, Any]) -> int:
     if not items:
         return 1
     return max(1, _math.ceil(len(items) / ITEMS_PER_PAGE))
+
+
+def _draw_fitting_text(
+    painter: QPainter,
+    rect: QRectF,
+    align: Qt.AlignmentFlag,
+    text: str,
+    base_font: QFont,
+    min_point_size: float = 5.5,
+) -> None:
+    """Draw text inside rect, dynamically shrinking font size if text overflows available width.
+
+    Ensures that long descriptions, customer names, or numbers never get cut off or hidden in print / PDF.
+    """
+    clean_text = str(text or "")
+    if not clean_text:
+        return
+    avail_w = rect.width()
+    if avail_w <= 0:
+        return
+
+    font = QFont(base_font)
+    fm = QFontMetricsF(font)
+    adv = fm.horizontalAdvance(clean_text)
+
+    if adv > avail_w:
+        # Scale font point size down proportionally
+        ratio = avail_w / max(1.0, adv)
+        new_size = max(min_point_size, font.pointSizeF() * ratio * 0.98)
+        font.setPointSizeF(new_size)
+
+        # Micro-adjustment loop if font metrics still slightly exceed bounding width
+        fm_adj = QFontMetricsF(font)
+        while fm_adj.horizontalAdvance(clean_text) > avail_w and font.pointSizeF() > min_point_size:
+            cur = font.pointSizeF() - 0.25
+            if cur < min_point_size:
+                font.setPointSizeF(min_point_size)
+                break
+            font.setPointSizeF(cur)
+            fm_adj = QFontMetricsF(font)
+
+    painter.save()
+    painter.setFont(font)
+    painter.drawText(rect, align, clean_text)
+    painter.restore()
 
 
 # ---------------------------------------------------------------------------
@@ -268,12 +314,14 @@ def paint_pad(
 
     # Customer Party Name
     party_font = QFont("Georgia", 13, QFont.Weight.Bold)
-    painter.setFont(party_font)
     painter.setPen(QColor("#000000"))
-    painter.drawText(
+    _draw_fitting_text(
+        painter,
         QRectF(LM + 14, INFO_TOP + 26, LEFT_BOX_W - 28, 22),
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
         party_str if party_str else "Cash Customer",
+        party_font,
+        min_point_size=8.0,
     )
 
     # Reference Badges (3 Chips: P.O., Job, Customer P.O.)
@@ -286,6 +334,9 @@ def paint_pad(
     job_display = job_str if (job_str and job_str != "—") else "—"
     cust_po_display = cust_po_str if (cust_po_str and cust_po_str != "—") else "—"
 
+    chip_font_lbl = QFont("Arial", 7.2, QFont.Weight.Bold)
+    chip_font_val = QFont("Arial", 8.2, QFont.Weight.Bold)
+
     # Chip 1: P.O. Number
     c1_x = LM + 12
     c1_rect = QRectF(c1_x, badge_y, chip_w, badge_h)
@@ -295,11 +346,17 @@ def paint_pad(
     painter.setPen(QPen(QColor("#000000"), 1.0))
     painter.drawPath(c1_path)
 
-    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
+    painter.setFont(chip_font_lbl)
     painter.setPen(QColor("#000000"))
     painter.drawText(QRectF(c1_x + 3, badge_y, 24, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PO:")
-    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c1_x + 27, badge_y, chip_w - 29, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, po_display)
+    _draw_fitting_text(
+        painter,
+        QRectF(c1_x + 27, badge_y, chip_w - 29, badge_h),
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        po_display,
+        chip_font_val,
+        min_point_size=6.0,
+    )
 
     # Chip 2: Job Number
     c2_x = c1_x + chip_w + chip_gap
@@ -308,10 +365,16 @@ def paint_pad(
     c2_path.addRoundedRect(c2_rect, 4.0, 4.0)
     painter.drawPath(c2_path)
 
-    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
+    painter.setFont(chip_font_lbl)
     painter.drawText(QRectF(c2_x + 3, badge_y, 28, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "JOB:")
-    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c2_x + 31, badge_y, chip_w - 33, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, job_display)
+    _draw_fitting_text(
+        painter,
+        QRectF(c2_x + 31, badge_y, chip_w - 33, badge_h),
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        job_display,
+        chip_font_val,
+        min_point_size=6.0,
+    )
 
     # Chip 3: Customer P.O. Number
     c3_x = c2_x + chip_w + chip_gap
@@ -320,10 +383,16 @@ def paint_pad(
     c3_path.addRoundedRect(c3_rect, 4.0, 4.0)
     painter.drawPath(c3_path)
 
-    painter.setFont(QFont("Arial", 7.2, QFont.Weight.Bold))
+    painter.setFont(chip_font_lbl)
     painter.drawText(QRectF(c3_x + 3, badge_y, 34, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "C.PO:")
-    painter.setFont(QFont("Arial", 8.2, QFont.Weight.Bold))
-    painter.drawText(QRectF(c3_x + 37, badge_y, chip_w - 39, badge_h), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, cust_po_display)
+    _draw_fitting_text(
+        painter,
+        QRectF(c3_x + 37, badge_y, chip_w - 39, badge_h),
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        cust_po_display,
+        chip_font_val,
+        min_point_size=6.0,
+    )
 
     # 2. Right Card: Invoice Details (Transparent inside, black border)
     right_rect = QRectF(RIGHT_BOX_X, INFO_TOP, RIGHT_BOX_W, INFO_H)
@@ -356,12 +425,14 @@ def paint_pad(
             lbl_text,
         )
 
-        painter.setFont(meta_val_font)
         painter.setPen(QColor("#000000"))
-        painter.drawText(
+        _draw_fitting_text(
+            painter,
             QRectF(RIGHT_BOX_X + 115, row_y_offset, RIGHT_BOX_W - 127, row_height),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             val_text,
+            meta_val_font,
+            min_point_size=7.0,
         )
 
         row_y_offset += row_height
@@ -443,21 +514,28 @@ def paint_pad(
     painter.drawLine(QPointF(LM, TABLE_TOP + TH), QPointF(RM, TABLE_TOP + TH))
     painter.drawLine(QPointF(LM, TOT_Y), QPointF(RM, TOT_Y))
 
-    # 7. Column headers text (all centered)
+    # 7. Column headers text
     hf = QFont("Arial", 8.5, QFont.Weight.Bold)
     hf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.4)
     painter.setFont(hf)
     painter.setPen(QColor("#000000"))
     cur_x = LM
     for i, (title, width) in enumerate(cols):
-        painter.drawText(
-            QRectF(cur_x + 2, TABLE_TOP, width - 4, TH),
-            Qt.AlignmentFlag.AlignCenter,
-            title,
-        )
+        if title == "DESCRIPTION":
+            painter.drawText(
+                QRectF(cur_x + 8, TABLE_TOP, width - 12, TH),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                title,
+            )
+        else:
+            painter.drawText(
+                QRectF(cur_x + 2, TABLE_TOP, width - 4, TH),
+                Qt.AlignmentFlag.AlignCenter,
+                title,
+            )
         cur_x += width
 
-    # 8. Data rows text — ALL CENTERED (No fills here, purely text!)
+    # 8. Data rows text (Description left-aligned, empty numbers hidden)
     items = data.get("items", [])
     start_idx = (page_number - 1) * ITEMS_PER_PAGE
     end_idx = start_idx + ITEMS_PER_PAGE
@@ -487,16 +565,28 @@ def paint_pad(
 
         cur_x = LM
         row_vals = (
-            [(sr, cw["sr"]), (desc, cw["desc"]), (f"{qty:g}", cw["qty"]),
-             (f"{rate:,.2f}", cw["rate"]), (f"{amt:,.2f}", cw["amt"])]
+            [
+                (sr, cw["sr"], Qt.AlignmentFlag.AlignCenter, 3),
+                (desc, cw["desc"], Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 8),
+                (f"{qty:g}" if qty > 0 else "", cw["qty"], Qt.AlignmentFlag.AlignCenter, 3),
+                (f"{rate:,.2f}" if rate > 0 else "", cw["rate"], Qt.AlignmentFlag.AlignCenter, 3),
+                (f"{amt:,.2f}" if amt > 0 else "", cw["amt"], Qt.AlignmentFlag.AlignCenter, 3),
+            ]
             if is_bill
-            else [(sr, cw["sr"]), (desc, cw["desc"]), (f"{qty:g}", cw["qty"])]
+            else [
+                (sr, cw["sr"], Qt.AlignmentFlag.AlignCenter, 3),
+                (desc, cw["desc"], Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, 8),
+                (f"{qty:g}" if qty > 0 else "", cw["qty"], Qt.AlignmentFlag.AlignCenter, 3),
+            ]
         )
-        for val, width in row_vals:
-            painter.drawText(
-                QRectF(cur_x + 3, row_y, width - 6, ROW_H),
-                Qt.AlignmentFlag.AlignCenter,
+        for val, width, align, pad in row_vals:
+            _draw_fitting_text(
+                painter,
+                QRectF(cur_x + pad, row_y, width - (pad * 2), ROW_H),
+                align,
                 val,
+                item_f,
+                min_point_size=5.5,
             )
             cur_x += width
 
@@ -517,16 +607,18 @@ def paint_pad(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             tot_label,
         )
-        painter.drawText(
-            QRectF(LM + cw["sr"] + cw["desc"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
-            Qt.AlignmentFlag.AlignCenter,
-            f"{display_qty:g}",
-        )
-        painter.drawText(
-            QRectF(RM - cw["amt"] + 3, TOT_Y, cw["amt"] - 6, TOT_H),
-            Qt.AlignmentFlag.AlignCenter,
-            f"{display_amt:,.2f}",
-        )
+        if display_qty > 0:
+            painter.drawText(
+                QRectF(LM + cw["sr"] + cw["desc"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
+                Qt.AlignmentFlag.AlignCenter,
+                f"{display_qty:g}",
+            )
+        if display_amt > 0:
+            painter.drawText(
+                QRectF(RM - cw["amt"] + 3, TOT_Y, cw["amt"] - 6, TOT_H),
+                Qt.AlignmentFlag.AlignCenter,
+                f"{display_amt:,.2f}",
+            )
     else:
         tot_label = "TOTAL QUANTITY:" if total_pages == 1 else ("GRAND TOTAL QTY:" if is_last_page else f"SUBTOTAL QTY (PG {page_number}):")
         display_qty = grand_qty if (total_pages == 1 or is_last_page) else page_qty
@@ -536,11 +628,12 @@ def paint_pad(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             tot_label,
         )
-        painter.drawText(
-            QRectF(RM - cw["qty"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
-            Qt.AlignmentFlag.AlignCenter,
-            f"{display_qty:g}",
-        )
+        if display_qty > 0:
+            painter.drawText(
+                QRectF(RM - cw["qty"] + 3, TOT_Y, cw["qty"] - 6, TOT_H),
+                Qt.AlignmentFlag.AlignCenter,
+                f"{display_qty:g}",
+            )
 
     # ── SIGNATURE AREA ────────────────────────────────────────────────────
     SIG_W    = 200.0

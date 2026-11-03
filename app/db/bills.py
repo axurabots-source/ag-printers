@@ -548,6 +548,7 @@ def list_bills(
     search: str = "",
     date_from: str = "",
     date_to: str = "",
+    party_id: int | None = None,
 ) -> list[Bill]:
     """Bills, newest first; *search* matches bill number, party, PO or challan number."""
     sql = _BILL_SELECT
@@ -563,6 +564,9 @@ def list_bills(
             " OR (SELECT g.gate_pass_number FROM gate_passes AS g WHERE g.bill_id = b.id) LIKE ? COLLATE NOCASE)"
         )
         params.extend([like, like, like, like])
+    if party_id is not None:
+        where_parts.append("b.party_id = ?")
+        params.append(party_id)
     if date_from.strip():
         where_parts.append("b.bill_date >= ?")
         params.append(date_from.strip())

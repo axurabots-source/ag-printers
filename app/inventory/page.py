@@ -26,21 +26,129 @@ from PySide6.QtWidgets import (
 from app.db.barcode_inventory import (
     BarcodeInventoryItem,
     delete_barcode_inventory_item,
+    get_all_last_movements,
     get_barcode_inventory_summary,
     list_barcode_inventory,
 )
 from app.inventory.dialog import AddStockDialog, BarcodeItemDialog
+from app.inventory.history_dialog import StockHistoryDialog
 
 
 def _format_timestamp(val: str | None) -> str:
     """Format timestamp into readable date only."""
     if not val:
-        return "-"
+        return "—"
     try:
         clean = str(val).strip().replace("T", " ")
         return datetime.fromisoformat(clean).strftime("%d-%b-%Y")
     except Exception:
-        return str(val)[:10] if val else "-"
+        return str(val)[:10] if val else "—"
+
+
+class InventoryMovementCell(QFrame):
+    """Interactive cell displaying Movement Quantity on top and date underneath.
+
+    Clicking opens the stock history dialog for this item.
+    """
+
+    def __init__(
+        self,
+        movement: dict[str, any] | None,
+        is_in: bool,
+        on_click,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._on_click = on_click
+        self.setObjectName("MovementCell")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setSpacing(1)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if movement and float(movement.get("quantity") or 0.0) > 0:
+            qty = float(movement["quantity"])
+            qty_fmt = f"{qty:,.0f}" if qty.is_integer() else f"{qty:,.2f}"
+            qty_text = f"+{qty_fmt}" if is_in else f"-{qty_fmt}"
+            qty_color = "#047857" if is_in else "#DC2626"
+
+            qty_lbl = QLabel(qty_text)
+            qty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            qty_lbl.setStyleSheet(
+                f"font-size: 12px; font-weight: 700; color: {qty_color}; border: none; background: transparent;"
+            )
+            layout.addWidget(qty_lbl)
+
+            date_str = _format_timestamp(movement.get("created_at"))
+            date_lbl = QLabel(date_str)
+            date_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            date_lbl.setStyleSheet(
+                "font-size: 10.5px; font-weight: 500; color: #64748B; border: none; background: transparent;"
+            )
+            layout.addWidget(date_lbl)
+
+            tip = "Click to view Stock IN history" if is_in else "Click to view Stock OUT deductions"
+            self.setToolTip(f"{tip} (Last: {qty_text} on {date_str})")
+        else:
+            dash_lbl = QLabel("—")
+            dash_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            dash_lbl.setStyleSheet(
+                "font-size: 13px; font-weight: 600; color: #94A3B8; border: none; background: transparent;"
+            )
+            layout.addWidget(dash_lbl)
+            tip = "Click to view Stock IN history" if is_in else "Click to view Stock OUT deductions"
+            self.setToolTip(f"{tip} (No records yet)")
+
+        self.setStyleSheet("""
+            QFrame#MovementCell {
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+            }
+            QFrame#MovementCell:hover {
+                background-color: #F8FAFC;
+                border: 1px solid #CBD5E1;
+            }
+        """)
+
+class ClickableDetailLabel(QFrame):
+    """Clickable product detail widget that opens the Edit/Delete dialog on click."""
+
+    def __init__(self, text: str, on_click, parent=None) -> None:
+        super().__init__(parent)
+        self._on_click = on_click
+        self.setObjectName("DetailCell")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Click to edit or delete this product")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            "color: #0F172A; font-size: 13px; font-weight: 600; border: none; background: transparent;"
+        )
+        layout.addWidget(lbl)
+
+        self.setStyleSheet("""
+            QFrame#DetailCell {
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+            }
+            QFrame#DetailCell:hover {
+                background-color: #F1F5F9;
+                border: 1px solid #CBD5E1;
+            }
+        """)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._on_click:
+            self._on_click()
+        super().mousePressEvent(event)
 
 
 class InventoryPage(QWidget):
@@ -54,8 +162,8 @@ class InventoryPage(QWidget):
         self._items: list[BarcodeInventoryItem] = []
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(14)
 
         # 1. Top Executive Bar
         top_bar = QHBoxLayout()
@@ -129,8 +237,8 @@ class InventoryPage(QWidget):
             "Stock Qty",
             "Unit Rate (Rs.)",
             "Total Value (Rs.)",
-            "Date Added",
-            "Last Updated",
+            "Last In",
+            "Last Out",
             "Actions",
         ])
         self._table.verticalHeader().setVisible(False)
@@ -164,13 +272,14 @@ class InventoryPage(QWidget):
         h_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
         h_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
 
-        self._table.setColumnWidth(0, 45)
-        self._table.setColumnWidth(2, 95)
-        self._table.setColumnWidth(3, 115)
-        self._table.setColumnWidth(4, 125)
-        self._table.setColumnWidth(5, 110)
-        self._table.setColumnWidth(6, 110)
-        self._table.setColumnWidth(7, 210)
+        self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._table.setColumnWidth(0, 42)
+        self._table.setColumnWidth(2, 90)
+        self._table.setColumnWidth(3, 105)
+        self._table.setColumnWidth(4, 115)
+        self._table.setColumnWidth(5, 105)
+        self._table.setColumnWidth(6, 105)
+        self._table.setColumnWidth(7, 85)
 
         t_layout.addWidget(self._table)
         layout.addWidget(table_card, 1)
@@ -221,12 +330,15 @@ class InventoryPage(QWidget):
             self._kpi_qty.val_label.setText(f"{summary['total_qty']:,.0f} Units")  # type: ignore[attr-defined]
             self._kpi_val.val_label.setText(f"Rs. {summary['total_value']:,.2f}")  # type: ignore[attr-defined]
 
+        # Batch fetch last movement records
+        last_in_map, last_out_map = get_all_last_movements(self._connection)
+
         # Populate table
         self._table.setRowCount(0)
         self._table.setRowCount(len(self._items))
 
         for row, item in enumerate(self._items):
-            self._table.setRowHeight(row, 44)
+            self._table.setRowHeight(row, 48)
 
             # 0. Sr.
             sr_lbl = QLabel(str(row + 1))
@@ -234,10 +346,12 @@ class InventoryPage(QWidget):
             sr_lbl.setStyleSheet("color: #64748B; font-size: 12px; font-weight: 600;")
             self._table.setCellWidget(row, 0, sr_lbl)
 
-            # 1. Detail / Description
-            detail_lbl = QLabel(item.detail)
-            detail_lbl.setStyleSheet("color: #0F172A; font-size: 13px; font-weight: 600; padding-left: 8px;")
-            self._table.setCellWidget(row, 1, detail_lbl)
+            # 1. Detail / Description (Clickable -> Opens Edit / Delete Dialog)
+            detail_cell = ClickableDetailLabel(
+                item.detail,
+                on_click=lambda it=item: self._open_edit_dialog(it),
+            )
+            self._table.setCellWidget(row, 1, detail_cell)
 
             # 2. Quantity
             qty_lbl = QLabel(f"{item.quantity:,.0f}" if item.quantity.is_integer() else f"{item.quantity:,.2f}")
@@ -257,33 +371,36 @@ class InventoryPage(QWidget):
             val_lbl.setStyleSheet("color: #047857; font-size: 12px; font-weight: 700;")
             self._table.setCellWidget(row, 4, val_lbl)
 
-            # 5. Date Added
-            created_lbl = QLabel(_format_timestamp(item.created_at))
-            created_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            created_lbl.setStyleSheet("color: #64748B; font-size: 11.5px; font-weight: 500;")
-            self._table.setCellWidget(row, 5, created_lbl)
+            # 5. Last In (Clickable movement cell: Qty on top, Date below)
+            in_cell = InventoryMovementCell(
+                last_in_map.get(item.id),
+                is_in=True,
+                on_click=lambda it=item: self._open_history_dialog(it, "IN"),
+            )
+            self._table.setCellWidget(row, 5, in_cell)
 
-            # 6. Last Updated
-            updated_lbl = QLabel(_format_timestamp(item.updated_at))
-            updated_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            updated_lbl.setStyleSheet("color: #2563EB; font-size: 11.5px; font-weight: 600;")
-            self._table.setCellWidget(row, 6, updated_lbl)
+            # 6. Last Out (Clickable movement cell: Qty on top, Date below)
+            out_cell = InventoryMovementCell(
+                last_out_map.get(item.id),
+                is_in=False,
+                on_click=lambda it=item: self._open_history_dialog(it, "OUT"),
+            )
+            self._table.setCellWidget(row, 6, out_cell)
 
-            # 7. Actions (+ Stock / Edit / Delete)
+            # 7. Actions (+ Stock only)
             act_widget = QWidget()
             act_layout = QHBoxLayout(act_widget)
             act_layout.setContentsMargins(2, 4, 2, 4)
-            act_layout.setSpacing(5)
             act_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             stock_btn = QPushButton("+ Stock")
-            stock_btn.setFixedSize(58, 28)
+            stock_btn.setFixedSize(68, 28)
             stock_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             stock_btn.setToolTip("Quickly add incoming stock quantity to this item")
             stock_btn.setStyleSheet("""
                 QPushButton {
                     border: 1px solid #A7F3D0;
-                    border-radius: 4px;
+                    border-radius: 5px;
                     color: #047857;
                     font-size: 11px;
                     font-weight: 700;
@@ -296,47 +413,6 @@ class InventoryPage(QWidget):
             """)
             stock_btn.clicked.connect(lambda _, it=item: self._open_add_stock_dialog(it))
             act_layout.addWidget(stock_btn)
-
-            edit_btn = QPushButton("Edit")
-            edit_btn.setObjectName("OutlineButton")
-            edit_btn.setFixedSize(52, 28)
-            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            edit_btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid #CBD5E1;
-                    border-radius: 4px;
-                    color: #2563EB;
-                    font-size: 11px;
-                    font-weight: 600;
-                    background-color: #FFFFFF;
-                }
-                QPushButton:hover {
-                    background-color: #EFF6FF;
-                    border-color: #93C5FD;
-                }
-            """)
-            edit_btn.clicked.connect(lambda _, it=item: self._open_edit_dialog(it))
-            act_layout.addWidget(edit_btn)
-
-            del_btn = QPushButton("Delete")
-            del_btn.setFixedSize(56, 28)
-            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            del_btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid #FECACA;
-                    border-radius: 4px;
-                    color: #DC2626;
-                    font-size: 11px;
-                    font-weight: 600;
-                    background-color: #FEF2F2;
-                }
-                QPushButton:hover {
-                    background-color: #FEE2E2;
-                    border-color: #FCA5A5;
-                }
-            """)
-            del_btn.clicked.connect(lambda _, it=item: self._delete_item(it))
-            act_layout.addWidget(del_btn)
 
             self._table.setCellWidget(row, 7, act_widget)
 
@@ -370,3 +446,8 @@ class InventoryPage(QWidget):
             delete_barcode_inventory_item(self._connection, item.id)
             self.refresh()
             self.inventory_updated.emit()
+
+    def _open_history_dialog(self, item: BarcodeInventoryItem, mode: str) -> None:
+        dlg = StockHistoryDialog(self._connection, item=item, mode=mode, parent=self)
+        dlg.exec()
+
