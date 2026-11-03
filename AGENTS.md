@@ -14,7 +14,7 @@
 ## 2. Active Session: AG Khata (Ledger & Accounts)
 The current active focus of this session is the **AG Khata (Ledger)** module:
 
-* **Primary File:** [`app/ledger/page.py`](file:///d:/AG%20Printers/app/ledger/page.py)
+* **Primary Files:** [`app/ledger/page.py`](file:///d:/AG%20Printers/app/ledger/page.py), [`app/ledger/export_dialog.py`](file:///d:/AG%20Printers/app/ledger/export_dialog.py), [`app/ledger/statement_pdf.py`](file:///d:/AG%20Printers/app/ledger/statement_pdf.py)
 * **Party Profile & History:** [`app/parties/profile_view.py`](file:///d:/AG%20Printers/app/parties/profile_view.py)
 * **Database Models:** [`app/db/bills.py`](file:///d:/AG%20Printers/app/db/bills.py) & [`app/db/schema.py`](file:///d:/AG%20Printers/app/db/schema.py)
 * **Shell Integration:** [`app/main_window.py`](file:///d:/AG%20Printers/app/main_window.py)
